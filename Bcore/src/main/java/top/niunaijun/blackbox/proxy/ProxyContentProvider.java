@@ -5,6 +5,8 @@ import android.content.ContentValues;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Binder;
+import android.os.Process;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -24,6 +26,9 @@ public class ProxyContentProvider extends ContentProvider {
     @Nullable
     @Override
     public Bundle call(@NonNull String method, @Nullable String arg, @Nullable Bundle extras) {
+        if (Binder.getCallingUid() != Process.myUid()) {
+            throw new SecurityException("External callers are not allowed");
+        }
         if (method.equals("_Black_|_init_process_")) {
             assert extras != null;
             extras.setClassLoader(AppConfig.class.getClassLoader());
