@@ -111,7 +111,9 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             Slog.w(TAG, "ActivityManager invoke: SecurityException in " + methodName + ", returning safe default", e);
             
             
-            if (methodName.startsWith("set") || methodName.startsWith("update")) {
+            if ("clearApplicationUserData".equals(methodName)) {
+                return false;
+            } else if (methodName.startsWith("set") || methodName.startsWith("update")) {
                 return null; 
             } else if (methodName.startsWith("get") || methodName.startsWith("query")) {
                 return null; 
