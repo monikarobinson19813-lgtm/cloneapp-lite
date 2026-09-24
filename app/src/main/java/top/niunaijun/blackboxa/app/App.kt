@@ -26,12 +26,6 @@ class App : Application() {
             super.attachBaseContext(base)
 
             try {
-                BlackBoxCore.get().closeCodeInit()
-            } catch (e: Exception) {
-                Log.e("App", "Error in closeCodeInit: ${e.message}")
-            }
-
-            try {
                 BlackBoxCore.get().onBeforeMainApplicationAttach(this, base)
             } catch (e: Exception) {
                 Log.e("App", "Error in onBeforeMainApplicationAttach: ${e.message}")
