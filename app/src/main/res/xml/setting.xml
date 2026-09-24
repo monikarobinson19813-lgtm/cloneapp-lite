@@ -11,12 +11,6 @@
                 android:title="@string/gms_manager"
                 android:summary="@string/jump_gms"/>
 
-
-
-        <SwitchPreferenceCompat
-                app:key="root_hide"
-                app:title="@string/hide_root" />
-
         <SwitchPreferenceCompat
                 app:key="daemon_enable"
                 app:title="@string/daemon_enable" />
