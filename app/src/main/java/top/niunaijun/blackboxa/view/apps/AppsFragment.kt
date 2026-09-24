@@ -22,7 +22,6 @@ import top.niunaijun.blackboxa.R
 import top.niunaijun.blackboxa.bean.AppInfo
 import top.niunaijun.blackboxa.databinding.FragmentAppsBinding
 import top.niunaijun.blackboxa.util.InjectionUtil
-import top.niunaijun.blackboxa.util.ShortcutUtil
 import top.niunaijun.blackboxa.util.inflate
 import top.niunaijun.blackboxa.util.MemoryManager
 import top.niunaijun.blackboxa.util.toast
@@ -350,10 +349,6 @@ class AppsFragment : Fragment() {
 
                                     R.id.app_stop -> {
                                         stopApk(data)
-                                    }
-
-                                    R.id.app_shortcut -> {
-                                        ShortcutUtil.createShortcut(requireContext(), userID, data)
                                     }
                                 }
                                 return@setOnMenuItemClickListener true
