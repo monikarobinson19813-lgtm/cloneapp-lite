@@ -1,0 +1,53 @@
+name: Android Debug APK
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  assemble-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK 29.0.13846066
+        shell: bash
+        run: sdkmanager "ndk;29.0.13846066"
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Verify arm64-v8a APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print
+          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*arm64-v8a*.apk' | grep -q .
+
+      - name: Upload debug APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloneapp-lite-debug-apks
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
