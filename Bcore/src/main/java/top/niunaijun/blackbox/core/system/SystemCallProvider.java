@@ -5,6 +5,8 @@ import android.content.ContentValues;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Binder;
+import android.os.Process;
 import android.os.IBinder;
 
 import androidx.annotation.NonNull;
@@ -43,6 +45,9 @@ public class SystemCallProvider extends ContentProvider {
     @Nullable
     @Override
     public Bundle call(@NonNull String method, @Nullable String arg, @Nullable Bundle extras) {
+        if (Binder.getCallingUid() != Process.myUid()) {
+            throw new SecurityException("External callers are not allowed");
+        }
         try {
             Slog.d(TAG, "call: " + method + ", " + extras);
             if ("VM".equals(method)) {
