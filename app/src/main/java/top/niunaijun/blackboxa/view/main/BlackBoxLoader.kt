@@ -9,7 +9,6 @@ import top.niunaijun.blackbox.app.BActivityThread
 import top.niunaijun.blackbox.app.configuration.AppLifecycleCallback
 import top.niunaijun.blackbox.app.configuration.ClientConfiguration
 import top.niunaijun.blackboxa.app.App
-import top.niunaijun.blackboxa.app.rocker.RockerManager
 import top.niunaijun.blackboxa.biz.cache.AppSharedPreferenceDelegate
 
 
@@ -170,7 +169,6 @@ class BlackBoxLoader {
                                                 TAG,
                                                 "afterApplicationOnCreate: pkg $packageName, processName $processName"
                                         )
-                                        RockerManager.init(application, userId)
                                     } catch (e: Exception) {
                                         Log.e(
                                                 TAG,
