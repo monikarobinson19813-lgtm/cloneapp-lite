@@ -7,7 +7,6 @@
 #include "IO.h"
 #include <jni.h>
 #include <JniHook/JniHook.h>
-#include <Hook/VMClassLoaderHook.h>
 #include <Hook/UnixFileSystemHook.h>
 #include <Hook/FileSystemHook.h>
 #include <Hook/BinderHook.h>
@@ -74,16 +73,11 @@ void nativeHook(JNIEnv *env) {
     BaseHook::init(env);
     UnixFileSystemHook::init(env);
     FileSystemHook::init();
-    VMClassLoaderHook::init(env);
 
     BinderHook::init(env);
     DexFileHook::init(env);
 }
 
-void hideXposed(JNIEnv *env, jclass clazz) {
-    ALOGD("set hideXposed");
-    VMClassLoaderHook::hideXposed();
-}
 
 void init(JNIEnv *env, jobject clazz, jint api_level) {
     ALOGD("NativeCore init.");
@@ -134,7 +128,6 @@ bool disableResourceLoading(JNIEnv *env, jclass clazz) {
 static JNINativeMethod gMethods[] = {
         {"disableHiddenApi", "()Z",                               (void *) disableHiddenApi},
         {"disableResourceLoading", "()Z",                         (void *) disableResourceLoading},
-        {"hideXposed", "()V",                                     (void *) hideXposed},
         {"addIORule",  "(Ljava/lang/String;Ljava/lang/String;)V", (void *) addIORule},
         {"enableIO",   "()V",                                     (void *) enableIO},
         {"init",       "(I)V",                                    (void *) init},
