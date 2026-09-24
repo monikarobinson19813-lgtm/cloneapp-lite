@@ -103,8 +103,6 @@ class AppsRepository {
                             continue
                         }
 
-                        val isXpModule = false
-
                         val info =
                                 AppInfo(
                                         safeLoadAppLabel(installedApplication),
@@ -112,8 +110,7 @@ class AppsRepository {
                                                 installedApplication
                                         ), 
                                         installedApplication.packageName,
-                                        installedApplication.sourceDir,
-                                        isXpModule
+                                        installedApplication.sourceDir
                                 )
                         installedList.add(info)
                     } catch (e: Exception) {
@@ -282,8 +279,7 @@ class AppsRepository {
                                             applicationInfo
                                     ), 
                                     applicationInfo.packageName,
-                                    applicationInfo.sourceDir ?: "",
-                                    false
+                                    applicationInfo.sourceDir ?: ""
                             )
 
                     appInfoList.add(info)
