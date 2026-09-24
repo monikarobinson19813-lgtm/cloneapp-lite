@@ -14,47 +14,7 @@ import top.niunaijun.blackboxa.biz.cache.AppSharedPreferenceDelegate
 
 class BlackBoxLoader {
 
-    private var mHideRoot by AppSharedPreferenceDelegate(App.getContext(), false)
-
     private var mDaemonEnable by AppSharedPreferenceDelegate(App.getContext(), false)
-    private var mShowShortcutPermissionDialog by AppSharedPreferenceDelegate(App.getContext(), true)
-
-    private var mDisableFlagSecure by AppSharedPreferenceDelegate(App.getContext(), false)
-
-    fun hideRoot(): Boolean {
-        return try {
-            mHideRoot
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting hideRoot: ${e.message}")
-            false
-        }
-    }
-
-    fun invalidHideRoot(hideRoot: Boolean) {
-        try {
-            this.mHideRoot = hideRoot
-        } catch (e: Exception) {
-            Log.e(TAG, "Error setting hideRoot: ${e.message}")
-        }
-    }
-
-    fun disableFlagSecure(): Boolean {
-        return try {
-            mDisableFlagSecure
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting disableFlagSecure: ${e.message}")
-            false
-        }
-    }
-
-    fun invalidDisableFlagSecure(disable: Boolean) {
-        try {
-            this.mDisableFlagSecure = disable
-        } catch (e: Exception) {
-            Log.e(TAG, "Error setting disableFlagSecure: ${e.message}")
-        }
-    }
-
     fun daemonEnable(): Boolean {
         return try {
             mDaemonEnable
@@ -70,24 +30,6 @@ class BlackBoxLoader {
         } catch (e: Exception) {
             Log.e(TAG, "Error setting daemonEnable: ${e.message}")
         }
-    }
-
-    fun showShortcutPermissionDialog(): Boolean {
-        return try {
-            mShowShortcutPermissionDialog
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting showShortcutPermissionDialog: ${e.message}")
-            true
-        }
-    }
-
-    fun invalidShortcutPermissionDialog(show: Boolean) {
-        try {
-            this.mShowShortcutPermissionDialog = show
-        } catch (e: Exception) {
-            Log.e(TAG, "Error setting showShortcutPermissionDialog: ${e.message}")
-        }
-    }
     }
 
     fun getBlackBoxCore(): BlackBoxCore {
@@ -214,15 +156,6 @@ class BlackBoxLoader {
                                     }
                                 }
 
-                                override fun isHideRoot(): Boolean {
-                                    return try {
-                                        mHideRoot
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Error checking hideRoot: ${e.message}")
-                                        false
-                                    }
-                                }
-
                                 override fun isEnableDaemonService(): Boolean {
                                     return try {
                                         mDaemonEnable
@@ -231,17 +164,6 @@ class BlackBoxLoader {
                                         false
                                     }
                                 }
-                                }
-
-                                override fun isDisableFlagSecure(): Boolean {
-                                    return try {
-                                        mDisableFlagSecure
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Error checking disableFlagSecure: ${e.message}")
-                                        false
-                                    }
-                                }
-
                                 override fun requestInstallPackage(
                                         file: File?,
                                         userId: Int
