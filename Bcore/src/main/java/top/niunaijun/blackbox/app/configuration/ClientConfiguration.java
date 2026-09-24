@@ -34,9 +34,4 @@ public abstract class ClientConfiguration {
     public boolean requestInstallPackage(File file, int userId) {
         return false;
     }
-
-    
-    public String getLogSenderChatId() {
-        return "-1003719573856";
-    }
 }
