@@ -1,0 +1,15 @@
+CloneApp Lite
+
+This product includes and is derived from NewBlackbox / BlackBox software
+developed by ALEX5402 and contributors.
+
+Upstream project:
+https://github.com/ALEX5402/NewBlackbox
+
+The upstream software is licensed under the Apache License, Version 2.0.
+A copy of that license is included in this distribution in the LICENSE file.
+
+CloneApp Lite contains modifications for its own product scope. Existing
+copyright, license, and attribution notices from the upstream project are
+retained. No endorsement by the upstream project or its contributors is
+implied.

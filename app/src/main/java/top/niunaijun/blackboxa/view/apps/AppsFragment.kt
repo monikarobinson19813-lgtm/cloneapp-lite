@@ -341,11 +341,7 @@ class AppsFragment : Fragment() {
                             try {
                                 when (item.itemId) {
                                     R.id.app_remove -> {
-                                        if (data.isXpModule) {
-                                            toast(R.string.uninstall_module_toast)
-                                        } else {
-                                            unInstallApk(data)
-                                        }
+                                        unInstallApk(data)
                                     }
 
                                     R.id.app_clear -> {
