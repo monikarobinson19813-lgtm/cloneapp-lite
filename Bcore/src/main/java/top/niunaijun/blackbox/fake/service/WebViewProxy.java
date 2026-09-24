@@ -128,20 +128,16 @@ public class WebViewProxy extends ClassInvocationStub {
                     
                     settings.setAllowFileAccess(true);
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-                        settings.setAllowFileAccessFromFileURLs(true);
-                        settings.setAllowUniversalAccessFromFileURLs(true);
+                        settings.setAllowFileAccessFromFileURLs(false);
+                        settings.setAllowUniversalAccessFromFileURLs(false);
                     }
 
                     
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+                        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
                     }
 
                     
-                    String userAgent = settings.getUserAgentString();
-                    if (userAgent != null && !userAgent.contains("BlackBox")) {
-                        settings.setUserAgentString(userAgent + " BlackBox");
-                    }
 
                     
                     try {
@@ -155,7 +151,7 @@ public class WebViewProxy extends ClassInvocationStub {
 
                     
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                         settings.setSafeBrowsingEnabled(false);
+                         settings.setSafeBrowsingEnabled(true);
                     }
 
                     Slog.d(TAG, "WebView: Configured successfully with network access enabled");
@@ -191,20 +187,7 @@ public class WebViewProxy extends ClassInvocationStub {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
             try {
-                if (args != null && args.length > 0) {
-                    String suffix = (String) args[0];
-                    Slog.d(TAG, "WebView: setDataDirectorySuffix called with: " + suffix);
-                    
-                    
-                    Context context = BlackBoxCore.getContext();
-                    String packageName = context != null ? context.getPackageName() : "unknown";
-                    String userId = String.valueOf(BActivityThread.getUserId());
-                    String uniqueSuffix = suffix + "_" + userId + "_" + android.os.Process.myPid();
-                    args[0] = uniqueSuffix;
-                    Slog.d(TAG, "WebView: Using unique suffix: " + uniqueSuffix);
-                }
-                
-                return method.invoke(who, args);
+            return method.invoke(who, args);
             } catch (Exception e) {
                 Slog.w(TAG, "WebView: setDataDirectorySuffix failed, continuing without suffix", e);
                 return null; 
