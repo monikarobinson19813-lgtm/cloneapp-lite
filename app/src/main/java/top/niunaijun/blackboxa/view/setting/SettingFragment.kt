@@ -22,13 +22,6 @@ class SettingFragment : PreferenceFragmentCompat() {
             daemonPreference.setDefaultValue(mDaemonEnable)
             daemonPreference
         }
-
-        invalidHideState {
-            val disableFlagSecurePreference: Preference = (findPreference("disable_flag_secure")!!)
-            val mDisableFlagSecure = AppManager.mBlackBoxLoader.disableFlagSecure()
-            disableFlagSecurePreference.setDefaultValue(mDisableFlagSecure)
-            disableFlagSecurePreference
-        }
     }
 
     private fun initGms() {
@@ -53,9 +46,6 @@ class SettingFragment : PreferenceFragmentCompat() {
             when (preference.key) {
                 "daemon_enable" -> {
                     AppManager.mBlackBoxLoader.invalidDaemonEnable(tmpHide)
-                }
-                "disable_flag_secure" -> {
-                    AppManager.mBlackBoxLoader.invalidDisableFlagSecure(tmpHide)
                 }
             }
 
