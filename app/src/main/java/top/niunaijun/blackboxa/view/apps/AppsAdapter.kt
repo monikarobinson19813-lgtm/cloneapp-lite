@@ -71,13 +71,6 @@ class AppsAdapter : RVHolderFactory() {
                 binding.name.text = item.name ?: "Unknown App"
                 
                 
-                if (item.isXpModule) {
-                    binding.cornerLabel.visibility = View.VISIBLE
-                } else {
-                    binding.cornerLabel.visibility = View.INVISIBLE
-                }
-                
-                
                 isAttached = true
                 
             } catch (e: Exception) {
@@ -141,7 +134,6 @@ class AppsAdapter : RVHolderFactory() {
             try {
                 binding.icon.setImageDrawable(createDefaultIcon())
                 binding.name.text = "Unknown App"
-                binding.cornerLabel.visibility = View.INVISIBLE
             } catch (e: Exception) {
                 Log.e(TAG, "Error setting safe defaults: ${e.message}")
             }
@@ -157,7 +149,6 @@ class AppsAdapter : RVHolderFactory() {
                 
                 binding.icon.setImageDrawable(ColorDrawable(DEFAULT_ICON_COLOR))
                 binding.name.text = item.name ?: "Unknown App"
-                binding.cornerLabel.visibility = View.INVISIBLE
             } catch (e: Exception) {
                 Log.e(TAG, "Error in fallback ViewHolder: ${e.message}")
             }
