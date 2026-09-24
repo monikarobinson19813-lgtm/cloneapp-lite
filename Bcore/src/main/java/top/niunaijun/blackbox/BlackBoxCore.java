@@ -57,7 +57,6 @@ import top.niunaijun.blackbox.fake.frameworks.BUserManager;
 import top.niunaijun.blackbox.fake.hook.HookManager;
 import top.niunaijun.blackbox.proxy.ProxyManifest;
 import top.niunaijun.blackbox.utils.FileUtils;
-import top.niunaijun.blackbox.utils.ShellUtils;
 import top.niunaijun.blackbox.utils.Slog;
 import top.niunaijun.blackbox.utils.compat.BuildCompat;
 import top.niunaijun.blackbox.utils.compat.BundleCompat;
