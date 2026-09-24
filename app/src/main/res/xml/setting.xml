@@ -15,11 +15,6 @@
                 app:key="daemon_enable"
                 app:title="@string/daemon_enable" />
 
-        <SwitchPreferenceCompat
-                app:key="disable_flag_secure"
-                app:title="@string/disable_flag_secure"
-                app:summary="@string/disable_flag_secure_summary" />
-
     </PreferenceCategory>
 
 </PreferenceScreen>
