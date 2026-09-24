@@ -954,9 +954,6 @@ public class BlackBoxCore extends ClientConfiguration {
             }
         }
         
-        
-        initVpnService();
-        
         HookManager.get().init();
     }
 
@@ -1529,81 +1526,6 @@ public class BlackBoxCore extends ClientConfiguration {
         }
     }
     
-    
-    private void initVpnService() {
-        try {
-            
-            if (mClientConfiguration == null || !mClientConfiguration.isUseVpnNetwork()) {
-                Slog.d(TAG, "VPN network mode disabled, using normal network");
-                return;
-            }
-            
-            
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        
-                        Intent vpnIntent = new Intent(getContext(), top.niunaijun.blackbox.proxy.ProxyVpnService.class);
-                        vpnIntent.setAction("android.net.VpnService");
-                        
-                        if (BuildCompat.isOreo()) {
-                            getContext().startForegroundService(vpnIntent);
-                        } else {
-                            getContext().startService(vpnIntent);
-                        }
-                        
-                        Slog.d(TAG, "VPN service started successfully for internet access");
-                    } catch (Exception e) {
-                        Slog.w(TAG, "Failed to start VPN service: " + e.getMessage());
-                        
-                        
-                    }
-                }
-            }, "VPNServiceInit").start();
-            
-        } catch (Exception e) {
-            Slog.w(TAG, "Failed to initialize VPN service: " + e.getMessage());
-            
-        }
-    }
-    
-    
-    private static void ensureProperInitialization() {
-        try {
-            
-            Slog.d(TAG, "Ensuring proper initialization order...");
-            
-            
-            try {
-                NativeCore.init(android.os.Build.VERSION.SDK_INT);
-                Slog.d(TAG, "NativeCore initialized successfully");
-            } catch (Exception e) {
-                Slog.w(TAG, "NativeCore initialization failed: " + e.getMessage());
-            }
-            
-            
-            try {
-                ServiceManager.initBlackManager();
-                Slog.d(TAG, "ServiceManager initialized successfully");
-            } catch (Exception e) {
-                Slog.w(TAG, "ServiceManager initialization failed: " + e.getMessage());
-            }
-            
-            
-            try {
-                BActivityThread.hookActivityThread();
-                Slog.d(TAG, "BActivityThread hooks initialized successfully");
-            } catch (Exception e) {
-                Slog.w(TAG, "BActivityThread hooks initialization failed: " + e.getMessage());
-            }
-            
-            Slog.d(TAG, "Proper initialization order ensured");
-        } catch (Exception e) {
-            Slog.e(TAG, "Failed to ensure proper initialization order", e);
-        }
-    }
-
     
     public static boolean isRunningApplication(String packageName, int userId) {
         
