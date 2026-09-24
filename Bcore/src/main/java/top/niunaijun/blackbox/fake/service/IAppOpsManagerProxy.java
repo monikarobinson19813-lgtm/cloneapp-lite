@@ -47,6 +47,17 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
         
         
         
+        if ("noteOperation".equals(methodName)
+                && "android.app.SyncNotedAppOp".equals(method.getReturnType().getName())) {
+            MethodParameterUtils.replaceFirstAppPkg(args);
+            MethodParameterUtils.replaceLastUid(args);
+            try {
+                return method.invoke(getBase(), args);
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                throw e.getCause();
+            }
+        }
+
         if (methodName.startsWith("check") || 
             methodName.startsWith("note") || 
             methodName.startsWith("start")) {
