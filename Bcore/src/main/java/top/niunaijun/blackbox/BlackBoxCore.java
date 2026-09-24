@@ -59,12 +59,10 @@ import top.niunaijun.blackbox.proxy.ProxyManifest;
 import top.niunaijun.blackbox.utils.FileUtils;
 import top.niunaijun.blackbox.utils.ShellUtils;
 import top.niunaijun.blackbox.utils.Slog;
-import top.niunaijun.blackbox.utils.SimpleCrashFix;
 import top.niunaijun.blackbox.utils.compat.BuildCompat;
 import top.niunaijun.blackbox.utils.compat.BundleCompat;
 
 import top.niunaijun.blackbox.utils.provider.ProviderCall;
-import top.niunaijun.blackbox.utils.StackTraceFilter;
 import top.niunaijun.blackbox.utils.SocialMediaAppCrashPrevention;
 import top.niunaijun.blackbox.utils.DexCrashPrevention;
 import top.niunaijun.blackbox.utils.NativeCrashPrevention;
@@ -84,12 +82,6 @@ public class BlackBoxCore extends ClientConfiguration {
     
     static {
         try {
-            
-            SimpleCrashFix.installSimpleFix();
-            Slog.d(TAG, "Simple crash fix installed at class loading time");
-            
-            StackTraceFilter.install();
-            Slog.d(TAG, "Stack trace filter installed at class loading time");
             
             SocialMediaAppCrashPrevention.initialize();
             Slog.d(TAG, "Social media app crash prevention initialized at class loading time");
@@ -851,9 +843,6 @@ public class BlackBoxCore extends ClientConfiguration {
         sContext = context;
         mClientConfiguration = clientConfiguration;
         
-        
-        installSystemHooks();
-        
         initNotificationManager();
 
         String processName = getProcessName(getContext());
@@ -958,8 +947,6 @@ public class BlackBoxCore extends ClientConfiguration {
     }
 
     public void doCreate() {
-        
-        installSystemHooks();
         
         
         long startTime = System.currentTimeMillis();
@@ -1472,16 +1459,6 @@ public class BlackBoxCore extends ClientConfiguration {
             BActivityThread.ensureActivityContext(activity);
         } catch (Exception e) {
             Slog.w(TAG, "BActivityThread.ensureActivityContext() failed", e);
-        }
-    }
-    
-    
-    public static void installSystemHooks() {
-        try {
-            SimpleCrashFix.installSimpleFix();
-            Slog.d(TAG, "System hooks installed successfully");
-        } catch (Exception e) {
-            Slog.e(TAG, "Failed to install system hooks", e);
         }
     }
     
