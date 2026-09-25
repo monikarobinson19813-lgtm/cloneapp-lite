@@ -53,10 +53,8 @@ jobs:
             adb install -r teststub/build/outputs/apk/debug/teststub-debug.apk
             adb shell pm grant com.cloneapp.teststub android.permission.POST_NOTIFICATIONS
 
-            HOST_APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*universal-debug.apk' -print -quit)"
-            test -n "$HOST_APK"
-            echo "Installing CloneApp Lite: $HOST_APK"
-            adb install -r "$HOST_APK"
+            echo "Installing CloneApp Lite universal APK"
+            adb install -r "$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*universal-debug.apk' -print -quit)"
             adb shell pm grant com.cloneapp.lite android.permission.POST_NOTIFICATIONS || true
 
             adb logcat -c
