@@ -60,9 +60,11 @@ jobs:
             adb shell am start -W -n com.cloneapp.teststub/.SecondActivity --es marker CI-User0
             adb shell dumpsys activity activities | grep -q "com.cloneapp.teststub/.SecondActivity"
 
+            adb shell am force-stop com.cloneapp.teststub
             adb shell am start -W -n com.cloneapp.teststub/.MainActivity --es marker CI-User0 --es action post_notification
             adb shell dumpsys notification --noredact | grep -q "com.cloneapp.teststub"
 
+            adb shell am force-stop com.cloneapp.teststub
             adb shell am start -W -n com.cloneapp.teststub/.MainActivity --es marker CI-User0 --es action open_pdf
             sleep 1
             adb shell dumpsys activity activities | grep -q "com.cloneapp.teststub/.PdfViewerActivity"
