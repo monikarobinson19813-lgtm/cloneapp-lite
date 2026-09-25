@@ -65,6 +65,9 @@ class MainActivity : LoadingActivity() {
             
             checkStoragePermission()
 
+            checkNotificationPermission()
+            checkBatteryOptimizationExemption()
+
             
             checkVpnPermission()
 
@@ -198,6 +201,88 @@ class MainActivity : LoadingActivity() {
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error handling storage permission result: ${e.message}")
+                }
+            }
+
+    private fun checkNotificationPermission() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                val granted =
+                        androidx.core.content.ContextCompat.checkSelfPermission(
+                                this,
+                                android.Manifest.permission.POST_NOTIFICATIONS
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (granted) {
+                    Log.d(TAG, "POST_NOTIFICATIONS already granted")
+                } else {
+                    Log.d(TAG, "Requesting POST_NOTIFICATIONS")
+                    notificationPermissionResult.launch(
+                            android.Manifest.permission.POST_NOTIFICATIONS
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking notification permission: ${e.message}")
+        }
+    }
+
+    private val notificationPermissionResult =
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                if (granted) {
+                    Log.d(TAG, "POST_NOTIFICATIONS granted")
+                } else {
+                    Log.w(TAG, "POST_NOTIFICATIONS denied")
+                }
+            }
+
+    private fun checkBatteryOptimizationExemption() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
+                return
+            }
+
+            val powerManager =
+                    getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            if (powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                Log.d(TAG, "Battery optimization exemption already granted")
+                return
+            }
+
+            val preferences =
+                    getSharedPreferences("cloneapp_acceptance", Context.MODE_PRIVATE)
+            if (preferences.getBoolean("battery_optimization_prompted", false)) {
+                Log.d(TAG, "Battery optimization exemption prompt already shown")
+                return
+            }
+
+            preferences.edit {
+                putBoolean("battery_optimization_prompted", true)
+            }
+
+            val intent =
+                    Intent(
+                            android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse("package:$packageName")
+                    )
+            Log.d(TAG, "Requesting battery optimization exemption")
+            batteryOptimizationResult.launch(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting battery optimization exemption: ${e.message}")
+        }
+    }
+
+    private val batteryOptimizationResult =
+            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                try {
+                    val powerManager =
+                            getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                    if (powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                        Log.d(TAG, "Battery optimization exemption granted")
+                    } else {
+                        Log.w(TAG, "Battery optimization exemption not granted")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error handling battery optimization result: ${e.message}")
                 }
             }
 

@@ -105,10 +105,12 @@ public class BNotificationManagerService extends IBNotificationManagerService.St
         ProcessRecord processByPid = BProcessManagerService.get().findProcessByPid(callingPid);
         if (processByPid == null)
             return;
+        CharSequence originalName = notificationChannel.getName();
         handleNotificationChannel(notificationChannel, userId);
         mRealNotificationManager.createNotificationChannel(notificationChannel);
 
         resetNotificationChannel(notificationChannel);
+        notificationChannel.setName(originalName);
         NotificationRecord notificationRecord = getNotificationRecord(processByPid.getPackageName(), userId);
         synchronized (notificationRecord.mNotificationChannels) {
             notificationRecord.mNotificationChannels.put(notificationChannel.getId(), notificationChannel);
@@ -190,6 +192,7 @@ public class BNotificationManagerService extends IBNotificationManagerService.St
         synchronized (notificationRecord.mIds) {
             notificationRecord.mIds.add(notificationId);
         }
+        applyUserLabel(notification, userId);
         mRealNotificationManager.notify(notificationId, notification);
     }
 
@@ -213,6 +216,14 @@ public class BNotificationManagerService extends IBNotificationManagerService.St
         String channelId = channelContext.mId();
         String blackChannelId = getBlackChannelId(channelId, userId);
         channelContext._set_mId(blackChannelId);
+
+        String userLabel = "User " + userId;
+        CharSequence channelName = notificationChannel.getName();
+        if (channelName == null || !channelName.toString().contains(userLabel)) {
+            notificationChannel.setName(
+                    channelName == null ? userLabel : channelName + " · " + userLabel
+            );
+        }
 
         notificationChannel.setGroup(getBlackGroupId(notificationChannel.getGroup(), userId));
     }
@@ -269,6 +280,22 @@ public class BNotificationManagerService extends IBNotificationManagerService.St
             mRealNotificationManager.cancel(id);
         }
         removeNotificationRecord(packageName, userId);
+    }
+
+    private void applyUserLabel(Notification notification, int userId) {
+        if (notification == null || notification.extras == null) {
+            return;
+        }
+        String userLabel = "User " + userId;
+        CharSequence existingSubText = notification.extras.getCharSequence(Notification.EXTRA_SUB_TEXT);
+        if (existingSubText == null || existingSubText.length() == 0) {
+            notification.extras.putCharSequence(Notification.EXTRA_SUB_TEXT, userLabel);
+        } else if (!existingSubText.toString().contains(userLabel)) {
+            notification.extras.putCharSequence(
+                    Notification.EXTRA_SUB_TEXT,
+                    existingSubText + " · " + userLabel
+            );
+        }
     }
 
     private String getBlackChannelId(String channelId, int userId) {
