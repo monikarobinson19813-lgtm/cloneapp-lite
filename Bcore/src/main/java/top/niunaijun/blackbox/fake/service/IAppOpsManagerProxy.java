@@ -47,12 +47,17 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
         
         
         
-        if ("noteOperation".equals(methodName)
-                && "android.app.SyncNotedAppOp".equals(method.getReturnType().getName())) {
+        if (AppOpsReturnTypeGuard.isSyncNotedNoteOperation(
+                methodName, method.getReturnType().getName())) {
             MethodParameterUtils.replaceFirstAppPkg(args);
             MethodParameterUtils.replaceLastUid(args);
             try {
-                return method.invoke(getBase(), args);
+                Object result = method.invoke(getBase(), args);
+                String actualType = result == null ? "null" : result.getClass().getName();
+                Slog.i(TAG, "APP_OPS_SYNC_NOTED_RESULT declaredType="
+                        + method.getReturnType().getName()
+                        + " actualType=" + actualType);
+                return result;
             } catch (java.lang.reflect.InvocationTargetException e) {
                 throw e.getCause();
             }

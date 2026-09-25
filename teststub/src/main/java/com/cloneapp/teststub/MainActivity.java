@@ -2,6 +2,7 @@ package com.cloneapp.teststub;
 
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.app.AppOpsManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -9,6 +10,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Process;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -52,6 +54,8 @@ public class MainActivity extends Activity {
             openSecondActivity();
         } else if ("clear_user_data".equals(action)) {
             probeClearApplicationUserData();
+        } else if ("sync_noted_app_op".equals(action)) {
+            probeSyncNotedAppOp();
         }
     }
 
@@ -85,6 +89,11 @@ public class MainActivity extends Activity {
         clearData.setText("Probe clearApplicationUserData");
         clearData.setOnClickListener(v -> probeClearApplicationUserData());
         root.addView(clearData);
+
+        Button syncNoted = new Button(this);
+        syncNoted.setText("Probe SyncNotedAppOp");
+        syncNoted.setOnClickListener(v -> probeSyncNotedAppOp());
+        root.addView(syncNoted);
 
         return root;
     }
@@ -172,6 +181,22 @@ public class MainActivity extends Activity {
         } catch (Throwable t) {
             Log.e(TAG, "TESTSTUB_CLEAR_USER_DATA_THROWN marker=" + marker, t);
             Toast.makeText(this, "clearApplicationUserData threw " + t.getClass().getSimpleName(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void probeSyncNotedAppOp() {
+        try {
+            AppOpsManager manager = getSystemService(AppOpsManager.class);
+            int mode = manager.noteOpNoThrow(
+                    AppOpsManager.OPSTR_CAMERA,
+                    Process.myUid(),
+                    getPackageName()
+            );
+            Log.i(TAG, "TESTSTUB_SYNC_NOTED_APP_OP_RESULT mode=" + mode + " marker=" + marker);
+            Toast.makeText(this, "SyncNotedAppOp probe returned mode " + mode, Toast.LENGTH_LONG).show();
+        } catch (Throwable t) {
+            Log.e(TAG, "TESTSTUB_SYNC_NOTED_APP_OP_THROWN marker=" + marker, t);
+            Toast.makeText(this, "SyncNotedAppOp probe threw " + t.getClass().getSimpleName(), Toast.LENGTH_LONG).show();
         }
     }
 
