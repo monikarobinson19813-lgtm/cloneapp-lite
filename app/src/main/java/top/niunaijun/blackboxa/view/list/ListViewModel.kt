@@ -12,6 +12,10 @@ class ListViewModel(private val repo: InstalledAppListSource) : BaseViewModel() 
 
     val loadingLiveData = MutableLiveData<Boolean>()
 
+    fun previewInstalledList() {
+        launchOnUI { repo.previewInstallList() }
+    }
+
     fun getInstallAppList(userID: Int) {
         launchOnUI { loadChooserInventory(userID) }
     }
