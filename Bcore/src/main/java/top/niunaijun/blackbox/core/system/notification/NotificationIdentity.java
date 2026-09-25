@@ -5,6 +5,9 @@ import android.app.NotificationChannel;
 
 /** Deterministic per-virtual-user notification identity rules. */
 public final class NotificationIdentity {
+    private static final String CHANNEL_SUFFIX = "@black-";
+    private static final String GROUP_SUFFIX = "@black-group-";
+
     private NotificationIdentity() {}
 
     public static String userLabel(int userId) {
@@ -12,17 +15,17 @@ public final class NotificationIdentity {
     }
 
     public static String channelId(String channelId, int userId) {
-        if (channelId == null || channelId.contains(BNotificationManagerService.CHANNEL_BLACK)) {
+        if (channelId == null || channelId.contains(CHANNEL_SUFFIX)) {
             return channelId;
         }
-        return channelId + BNotificationManagerService.CHANNEL_BLACK + userId;
+        return channelId + CHANNEL_SUFFIX + userId;
     }
 
     public static String groupId(String groupId, int userId) {
-        if (groupId == null || groupId.contains(BNotificationManagerService.GROUP_BLACK)) {
+        if (groupId == null || groupId.contains(GROUP_SUFFIX)) {
             return groupId;
         }
-        return groupId + BNotificationManagerService.GROUP_BLACK + userId;
+        return groupId + GROUP_SUFFIX + userId;
     }
 
     public static CharSequence labelledText(CharSequence existing, int userId) {
