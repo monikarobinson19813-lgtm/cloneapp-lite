@@ -61,6 +61,9 @@ jobs:
             echo "::warning::Persistent dev signing is not configured; using the runner's ephemeral debug key"
           fi
 
+      - name: Run JVM regression gates
+        run: ./gradlew testDebugUnitTest
+
       - name: Assemble debug APK
         run: ./gradlew assembleDebug
 
