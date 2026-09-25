@@ -332,7 +332,7 @@ class MainActivity : LoadingActivity() {
 
     private fun initToolbarSubTitle() {
         try {
-            updateUserRemark(0)
+            updateUserRemark(currentUser)
             
             viewBinding.toolbarLayout.toolbar.getChildAt(1)?.setOnClickListener {
                 try {
@@ -380,8 +380,13 @@ class MainActivity : LoadingActivity() {
                         override fun onPageSelected(position: Int) {
                             try {
                                 super.onPageSelected(position)
-                                currentUser = fragmentList[position].userID
-                                updateUserRemark(currentUser)
+                                val selectedUser =
+                                        InstanceRouting.userForPage(
+                                                position,
+                                                fragmentList.map { it.userID }
+                                        ) ?: return
+                                currentUser = selectedUser
+                                updateUserRemark(selectedUser)
                                 showFloatButton(true)
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error in onPageSelected: ${e.message}")
@@ -398,7 +403,11 @@ class MainActivity : LoadingActivity() {
         try {
             viewBinding.fab.setOnClickListener {
                 try {
-                    val userId = viewBinding.viewPager.currentItem
+                    val userId =
+                            InstanceRouting.userForPage(
+                                    viewBinding.viewPager.currentItem,
+                                    fragmentList.map { it.userID }
+                            ) ?: return@setOnClickListener
                     val intent = Intent(this, ListActivity::class.java)
                     intent.putExtra("userID", userId)
                     apkPathResult.launch(intent)
