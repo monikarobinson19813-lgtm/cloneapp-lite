@@ -78,7 +78,10 @@ public class ActivityManagerCommonProxy {
                     GET_META_DATA,
                     StartActivityCompat.getResolvedType(args),
                     BActivityThread.getUserId());
-            if (resolveInfo == null) {
+            if (!ActivityResolveInfoGuard.isUsable(resolveInfo)) {
+                if (resolveInfo != null) {
+                    Slog.w(TAG, "StartActivity: virtual resolve returned incomplete activityInfo; trying fallback");
+                }
                 String origPackage = intent.getPackage();
                 if (intent.getPackage() == null && intent.getComponent() == null) {
                     intent.setPackage(BActivityThread.getAppPackageName());
@@ -90,7 +93,10 @@ public class ActivityManagerCommonProxy {
                         GET_META_DATA,
                         StartActivityCompat.getResolvedType(args),
                         BActivityThread.getUserId());
-                if (resolveInfo == null) {
+                if (!ActivityResolveInfoGuard.isUsable(resolveInfo)) {
+                    if (resolveInfo != null) {
+                        Slog.w(TAG, "StartActivity: fallback resolve returned incomplete activityInfo; delegating to system");
+                    }
                     intent.setPackage(origPackage);
                     return method.invoke(who, args);
                 }
