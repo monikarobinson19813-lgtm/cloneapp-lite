@@ -64,8 +64,8 @@ jobs:
       - name: Run JVM regression gates
         run: ./gradlew testDebugUnitTest
 
-      - name: Assemble debug APK
-        run: ./gradlew assembleDebug
+      - name: Assemble debug APKs
+        run: ./gradlew :app:assembleDebug :teststub:assembleDebug
 
       - name: Verify arm64-v8a APK
         shell: bash
@@ -79,5 +79,13 @@ jobs:
         with:
           name: cloneapp-lite-debug-apks
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload D1 clear-data test stub
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloneapp-lite-d1-teststub-apk
+          path: teststub/build/outputs/apk/debug/teststub-debug.apk
           if-no-files-found: error
           retention-days: 14

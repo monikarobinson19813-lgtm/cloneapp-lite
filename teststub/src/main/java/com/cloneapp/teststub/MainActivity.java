@@ -1,6 +1,7 @@
 package com.cloneapp.teststub;
 
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -13,6 +14,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.FileProvider;
@@ -48,6 +50,8 @@ public class MainActivity extends Activity {
             openPdf();
         } else if ("open_second".equals(action)) {
             openSecondActivity();
+        } else if ("clear_user_data".equals(action)) {
+            probeClearApplicationUserData();
         }
     }
 
@@ -76,6 +80,11 @@ public class MainActivity extends Activity {
         second.setText("Open second activity");
         second.setOnClickListener(v -> openSecondActivity());
         root.addView(second);
+
+        Button clearData = new Button(this);
+        clearData.setText("Probe clearApplicationUserData");
+        clearData.setOnClickListener(v -> probeClearApplicationUserData());
+        root.addView(clearData);
 
         return root;
     }
@@ -144,6 +153,25 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             Log.e(TAG, "TESTSTUB_PDF_LAUNCH_FAILED marker=" + marker, e);
             throw new RuntimeException(e);
+        }
+    }
+
+    private void probeClearApplicationUserData() {
+        String packageName = getPackageName();
+        if (!"com.cloneapp.teststub".equals(packageName)) {
+            Log.e(TAG, "TESTSTUB_CLEAR_USER_DATA_ABORT unexpectedPackage=" + packageName + " marker=" + marker);
+            Toast.makeText(this, "Probe aborted: unexpected package", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        try {
+            ActivityManager manager = getSystemService(ActivityManager.class);
+            boolean result = manager.clearApplicationUserData();
+            Log.i(TAG, "TESTSTUB_CLEAR_USER_DATA_RESULT result=" + result + " marker=" + marker);
+            Toast.makeText(this, "clearApplicationUserData returned " + result, Toast.LENGTH_LONG).show();
+        } catch (Throwable t) {
+            Log.e(TAG, "TESTSTUB_CLEAR_USER_DATA_THROWN marker=" + marker, t);
+            Toast.makeText(this, "clearApplicationUserData threw " + t.getClass().getSimpleName(), Toast.LENGTH_LONG).show();
         }
     }
 
