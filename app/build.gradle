@@ -58,6 +58,9 @@ android {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
     }
+    testOptions {
+        unitTests.includeAndroidResources = true
+    }
     buildFeatures {
         viewBinding true
     }
@@ -88,6 +91,7 @@ dependencies {
     implementation libs.constraintlayout
     implementation libs.core.ktx
     testImplementation libs.junit
+    testImplementation 'org.robolectric:robolectric:4.13.2'
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core
 
