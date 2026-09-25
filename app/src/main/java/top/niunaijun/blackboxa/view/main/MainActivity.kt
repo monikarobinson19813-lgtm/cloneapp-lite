@@ -379,7 +379,22 @@ class MainActivity : LoadingActivity() {
                             val userId = data.getIntExtra("userID", 0)
                             val source = data.getStringExtra("source")
                             if (source != null) {
-                                fragmentList[userId].installApk(source)
+                                val targetFragment =
+                                        supportFragmentManager.fragments
+                                                .filterIsInstance<AppsFragment>()
+                                                .firstOrNull { fragment ->
+                                                    fragment.isAdded &&
+                                                            fragment.arguments?.getInt("userID", -1) == userId
+                                                }
+
+                                if (targetFragment != null) {
+                                    targetFragment.installApk(source)
+                                } else {
+                                    Log.e(
+                                            TAG,
+                                            "No attached AppsFragment found for userId=$userId; refusing to use stale fragment reference"
+                                    )
+                                }
                             }
                         }
                     }
