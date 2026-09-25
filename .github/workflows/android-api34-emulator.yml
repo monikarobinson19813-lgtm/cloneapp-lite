@@ -60,14 +60,25 @@ jobs:
             adb logcat -c
             adb shell am start -W -n com.cloneapp.lite/top.niunaijun.blackboxa.view.main.MainActivity
             sleep 2
-            adb shell pidof com.cloneapp.lite || (echo "CLONEAPP_API34_HOST_PROCESS_DIED"; echo "=== DEVICE ABI ==="; adb shell getprop ro.product.cpu.abilist; adb shell getprop ro.product.cpu.abi; echo "=== PACKAGE PATH/ABI ==="; adb shell pm path com.cloneapp.lite; adb shell dumpsys package com.cloneapp.lite | grep -E "primaryCpuAbi|secondaryCpuAbi|nativeLibraryDir|codePath" || true; echo "=== CRASH/NATIVE LOGS ==="; adb logcat -d -v threadtime | grep -E -A 60 -B 10 "AndroidRuntime|FATAL EXCEPTION|Process: com\\.cloneapp\\.lite|UnsatisfiedLinkError|dlopen|linker|NativeLoader|No implementation found" || adb logcat -d -v threadtime | tail -n 500; exit 1)
-            echo "CLONEAPP_API34_HOST_LAUNCH_OK"
+            adb shell pidof com.cloneapp.lite && echo "CLONEAPP_API34_BASE_PROCESS_LIVE" || echo "CLONEAPP_API34_BASE_PROCESS_ABSENT"
+            echo "=== CLONEAPP PROCESS SNAPSHOT ==="
+            adb shell ps -A | grep -E "com.cloneapp.lite|top.niunaijun|blackbox" || true
+            echo "=== RESUMED/TASK SNAPSHOT ==="
+            adb shell dumpsys activity activities | grep -E -A 8 -B 4 "mResumedActivity|topResumedActivity|com.cloneapp.lite|com.android.vpndialogs|com.android.settings" | head -n 220 || true
+            echo "=== ACTIVITY PROCESS SNAPSHOT ==="
+            adb shell dumpsys activity processes | grep -E -A 14 -B 5 "com.cloneapp.lite|top.niunaijun" | head -n 260 || true
+            echo "=== APP EXIT INFO ==="
+            adb shell dumpsys activity exit-info com.cloneapp.lite || true
+            echo "=== ACTIVITY MANAGER / CRASH / NATIVE LOGS ==="
+            adb logcat -b all -d -v threadtime | grep -E -A 50 -B 12 "com.cloneapp.lite|am_proc_died|am_kill|am_crash|FATAL EXCEPTION|AndroidRuntime|Fatal signal|SIGSEGV|SIGABRT|UnsatisfiedLinkError|dlopen|linker|NativeLoader|lowmemorykiller|lmkd" | tail -n 420 || true
 
             echo "Installing CloneApp Lite instrumentation APK"
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb logcat -c
             adb shell am instrument -w -r -e class top.niunaijun.blackboxa.VirtualUser0InstallTest com.cloneapp.lite.test/androidx.test.runner.AndroidJUnitRunner
             adb logcat -d -s CloneAppVirtualTest:I '*:S' | grep -q "VIRTUAL_USER_INSTALL_OK user=0 package=com.cloneapp.teststub"
+            echo "VIRTUAL_USER0_GATE_OK"
+            adb shell ps -A | grep -E "com.cloneapp.lite|top.niunaijun|blackbox" || true
 
             adb logcat -c
             adb shell am start -W -n com.cloneapp.teststub/.MainActivity --es marker CI-User0
