@@ -2,6 +2,9 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
+def ciKeystorePath = System.getenv("CLONEAPP_KEYSTORE_PATH")
+def ciKeystorePassword = System.getenv("CLONEAPP_KEYSTORE_PASSWORD")
+
 android {
     namespace 'com.cloneapp.teststub'
     compileSdk rootProject.ext.compileSdkVersion
@@ -14,6 +17,25 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (ciKeystorePath && ciKeystorePassword) {
+            ciDev {
+                storeFile file(ciKeystorePath)
+                storePassword ciKeystorePassword
+                keyAlias "cloneapp-dev"
+                keyPassword ciKeystorePassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            if (signingConfigs.findByName("ciDev") != null) {
+                signingConfig signingConfigs.ciDev
+            }
+        }
     }
 
     compileOptions {
