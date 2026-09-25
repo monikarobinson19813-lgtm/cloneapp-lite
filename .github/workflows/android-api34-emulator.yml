@@ -31,8 +31,8 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Build deterministic test stub
-        run: ./gradlew :teststub:assembleDebug
+      - name: Build CloneApp Lite and deterministic test stub
+        run: ./gradlew :app:assembleDebug :teststub:assembleDebug
 
       - name: Enable KVM
         run: |
@@ -52,6 +52,23 @@ jobs:
             set -eu
             adb install -r teststub/build/outputs/apk/debug/teststub-debug.apk
             adb shell pm grant com.cloneapp.teststub android.permission.POST_NOTIFICATIONS
+
+            HOST_APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*universal-debug.apk' -print -quit)"
+            test -n "$HOST_APK"
+            echo "Installing CloneApp Lite: $HOST_APK"
+            adb install -r "$HOST_APK"
+            adb shell pm grant com.cloneapp.lite android.permission.POST_NOTIFICATIONS || true
+
+            adb logcat -c
+            adb shell am start -W -n com.cloneapp.lite/top.niunaijun.blackboxa.view.main.MainActivity
+            sleep 2
+            adb shell pidof com.cloneapp.lite
+            if adb logcat -d | grep -E "FATAL EXCEPTION|Process: com\.cloneapp\.lite" >/dev/null; then
+              echo "CloneApp Lite fatal crash detected during API 34 host launch"
+              adb logcat -d | grep -E -A 25 "FATAL EXCEPTION|Process: com\.cloneapp\.lite"
+              exit 1
+            fi
+            echo "CLONEAPP_API34_HOST_LAUNCH_OK"
 
             adb logcat -c
             adb shell am start -W -n com.cloneapp.teststub/.MainActivity --es marker CI-User0
