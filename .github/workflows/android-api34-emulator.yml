@@ -49,7 +49,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -euo pipefail
+            set -eu
             adb install -r teststub/build/outputs/apk/debug/teststub-debug.apk
             adb shell pm grant com.cloneapp.teststub android.permission.POST_NOTIFICATIONS
 
