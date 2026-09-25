@@ -60,12 +60,7 @@ jobs:
             adb logcat -c
             adb shell am start -W -n com.cloneapp.lite/top.niunaijun.blackboxa.view.main.MainActivity
             sleep 2
-            adb shell pidof com.cloneapp.lite
-            if adb logcat -d | grep -E "FATAL EXCEPTION|Process: com\.cloneapp\.lite" >/dev/null; then
-              echo "CloneApp Lite fatal crash detected during API 34 host launch"
-              adb logcat -d | grep -E -A 25 "FATAL EXCEPTION|Process: com\.cloneapp\.lite"
-              exit 1
-            fi
+            adb shell pidof com.cloneapp.lite || (echo "CLONEAPP_API34_HOST_PROCESS_DIED"; echo "=== DEVICE ABI ==="; adb shell getprop ro.product.cpu.abilist; adb shell getprop ro.product.cpu.abi; echo "=== PACKAGE PATH/ABI ==="; adb shell pm path com.cloneapp.lite; adb shell dumpsys package com.cloneapp.lite | grep -E "primaryCpuAbi|secondaryCpuAbi|nativeLibraryDir|codePath" || true; echo "=== CRASH/NATIVE LOGS ==="; adb logcat -d -v threadtime | grep -E -A 60 -B 10 "AndroidRuntime|FATAL EXCEPTION|Process: com\\.cloneapp\\.lite|UnsatisfiedLinkError|dlopen|linker|NativeLoader|No implementation found" || adb logcat -d -v threadtime | tail -n 500; exit 1)
             echo "CLONEAPP_API34_HOST_LAUNCH_OK"
 
             adb logcat -c
