@@ -2,21 +2,22 @@ package top.niunaijun.blackboxa.view.list
 
 import androidx.lifecycle.MutableLiveData
 import top.niunaijun.blackboxa.bean.InstalledAppBean
-import top.niunaijun.blackboxa.data.AppsRepository
+import top.niunaijun.blackboxa.data.InstalledAppListSource
 import top.niunaijun.blackboxa.view.base.BaseViewModel
 
 
-class ListViewModel(private val repo: AppsRepository) : BaseViewModel() {
+class ListViewModel(private val repo: InstalledAppListSource) : BaseViewModel() {
 
     val appsLiveData = MutableLiveData<List<InstalledAppBean>>()
 
     val loadingLiveData = MutableLiveData<Boolean>()
 
-    fun previewInstalledList() {
-        launchOnUI { repo.previewInstallList() }
+    fun getInstallAppList(userID: Int) {
+        launchOnUI { loadChooserInventory(userID) }
     }
 
-    fun getInstallAppList(userID: Int) {
-        launchOnUI { repo.getInstalledAppList(userID, loadingLiveData, appsLiveData) }
+    internal fun loadChooserInventory(userID: Int) {
+        repo.previewInstallList()
+        repo.getInstalledAppList(userID, loadingLiveData, appsLiveData)
     }
 }

@@ -16,7 +16,7 @@ import top.niunaijun.blackboxa.util.MemoryManager
 import top.niunaijun.blackboxa.util.getString
 
 
-class AppsRepository {
+class AppsRepository : InstalledAppListSource {
     val TAG: String = "AppsRepository"
     private var mInstalledList = mutableListOf<AppInfo>()
 
@@ -78,7 +78,7 @@ class AppsRepository {
         }
     }
 
-    fun previewInstallList() {
+    override fun previewInstallList() {
         try {
             synchronized(mInstalledList) {
                 val installedApplications: List<ApplicationInfo> =
@@ -128,7 +128,7 @@ class AppsRepository {
         }
     }
 
-    fun getInstalledAppList(
+    override fun getInstalledAppList(
             userID: Int,
             loadingLiveData: MutableLiveData<Boolean>,
             appsLiveData: MutableLiveData<List<InstalledAppBean>>
