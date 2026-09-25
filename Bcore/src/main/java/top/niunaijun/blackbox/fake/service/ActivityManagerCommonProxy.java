@@ -1,5 +1,6 @@
 package top.niunaijun.blackbox.fake.service;
 
+import android.content.ClipData;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
@@ -98,6 +99,34 @@ public class ActivityManagerCommonProxy {
                         Slog.w(TAG, "StartActivity: fallback resolve returned incomplete activityInfo; delegating to system");
                     }
                     intent.setPackage(origPackage);
+
+                    String resolvedType = StartActivityCompat.getResolvedType(args);
+                    if (resolvedType == null) {
+                        resolvedType = intent.getType();
+                    }
+                    Uri sourceUri = intent.getData();
+                    if (ExternalContentBridgePolicy.shouldBridge(
+                            intent.getAction(),
+                            sourceUri == null ? null : sourceUri.getScheme(),
+                            resolvedType)) {
+                        Uri bridgedUri = FileProviderHandler.materializeForExternalView(
+                                BActivityThread.getApplication(),
+                                sourceUri,
+                                resolvedType,
+                                BActivityThread.getUserId());
+                        if (bridgedUri != null) {
+                            intent.setDataAndType(bridgedUri, resolvedType);
+                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            if (intent.getClipData() == null) {
+                                intent.setClipData(ClipData.newRawUri("CloneApp attachment", bridgedUri));
+                            }
+                            Slog.i(TAG, "StartActivity: bridged external PDF content URI from "
+                                    + sourceUri.getAuthority() + " to " + bridgedUri.getAuthority());
+                        } else {
+                            Slog.w(TAG, "StartActivity: unable to bridge external PDF content URI: "
+                                    + sourceUri.getAuthority());
+                        }
+                    }
                     return method.invoke(who, args);
                 }
             }
