@@ -14,7 +14,7 @@ import org.robolectric.annotation.Config
 import top.niunaijun.blackbox.core.system.notification.NotificationIdentity
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], application = android.app.Application::class)
 class NotificationIdentityRobolectricTest {
 
     @Test
