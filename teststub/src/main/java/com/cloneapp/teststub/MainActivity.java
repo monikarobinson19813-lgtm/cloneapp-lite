@@ -136,6 +136,7 @@ public class MainActivity extends Activity {
 
             Intent intent = new Intent(Intent.ACTION_VIEW)
                     .setDataAndType(uri, "application/pdf")
+                    .setClass(this, PdfViewerActivity.class)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
             Log.i(TAG, "TESTSTUB_PDF_INTENT uri=" + uri + " marker=" + marker);
