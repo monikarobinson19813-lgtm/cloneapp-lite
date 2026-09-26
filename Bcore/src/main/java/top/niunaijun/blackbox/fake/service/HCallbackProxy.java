@@ -182,13 +182,33 @@ public class HCallbackProxy implements IInjectHook, Handler.Callback {
                 // the guest Application; otherwise performLaunchActivity() may fetch
                 // another LoadedApk and instantiate the guest Application twice.
                 Object record = BRActivityThread.get(BlackBoxCore.mainThread()).getLaunchingActivity(token);
+                boolean usedActivitiesFallback = false;
+                if (record == null) {
+                    // On some Android 14/OxygenOS launch paths getLaunchingActivity()
+                    // no longer retains the record by the time our callback runs.
+                    // The same token is already present in ActivityThread.mActivities,
+                    // so use that live record rather than leaving the guest activity
+                    // without the virtual LoadedApk/packageInfo.
+                    java.util.Map<IBinder, Object> activities =
+                            BRActivityThread.get(BlackBoxCore.mainThread()).mActivities();
+                    if (activities != null) {
+                        record = activities.get(token);
+                        usedActivitiesFallback = record != null;
+                    }
+                }
+
                 if (record != null) {
                     ActivityThreadActivityClientRecordContext clientRecordContext =
                             BRActivityThreadActivityClientRecord.get(record);
                     clientRecordContext._set_packageInfo(
                             BActivityThread.currentActivityThread().getPackageInfo());
-                    Slog.i(TAG, "TIRAMISU_LAUNCH_REUSE_PACKAGE_INFO package="
-                            + activityInfo.packageName + " userId=" + stubRecord.mUserId);
+                    if (usedActivitiesFallback) {
+                        Slog.i(TAG, "TIRAMISU_LAUNCH_REUSE_PACKAGE_INFO_FALLBACK package="
+                                + activityInfo.packageName + " userId=" + stubRecord.mUserId);
+                    } else {
+                        Slog.i(TAG, "TIRAMISU_LAUNCH_REUSE_PACKAGE_INFO package="
+                                + activityInfo.packageName + " userId=" + stubRecord.mUserId);
+                    }
                 } else {
                     Slog.w(TAG, "TIRAMISU_LAUNCH_RECORD_MISSING package="
                             + activityInfo.packageName + " userId=" + stubRecord.mUserId);
