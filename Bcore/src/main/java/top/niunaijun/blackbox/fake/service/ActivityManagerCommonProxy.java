@@ -127,6 +127,8 @@ public class ActivityManagerCommonProxy {
                                     + sourceUri.getAuthority());
                         }
                     }
+                    Slog.i(TAG, "StartActivity: delegating external launch to system action="
+                            + intent.getAction() + " type=" + resolvedType);
                     return method.invoke(who, args);
                 }
             }

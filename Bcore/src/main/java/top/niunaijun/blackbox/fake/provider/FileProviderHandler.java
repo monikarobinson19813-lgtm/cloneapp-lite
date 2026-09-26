@@ -65,10 +65,15 @@ public class FileProviderHandler {
             return null;
         }
 
-        Uri bridgedUri = BlackBoxCore.getBStorageManager().getUriForFile(destination.getAbsolutePath());
+        Uri bridgedUri = ExternalViewContentProvider.getUriForFile(
+                userId,
+                destination);
         if (bridgedUri == null) {
             destination.delete();
+            return null;
         }
+        Slog.i(TAG, "EXTERNAL_VIEW_TEMP_CREATED userId=" + userId
+                + " file=" + destination.getAbsolutePath());
         return bridgedUri;
     }
 
