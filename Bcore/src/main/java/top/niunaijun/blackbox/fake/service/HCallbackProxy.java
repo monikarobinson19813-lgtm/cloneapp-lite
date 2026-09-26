@@ -176,6 +176,23 @@ public class HCallbackProxy implements IInjectHook, Handler.Callback {
                 LaunchActivityItemContext launchActivityItemContext = BRLaunchActivityItem.get(r);
                 launchActivityItemContext._set_mIntent(stubRecord.mTarget);
                 launchActivityItemContext._set_mInfo(activityInfo);
+
+                // Android 13+ keeps a launching ActivityClientRecord alongside the
+                // LaunchActivityItem. Reuse the virtual LoadedApk that already owns
+                // the guest Application; otherwise performLaunchActivity() may fetch
+                // another LoadedApk and instantiate the guest Application twice.
+                Object record = BRActivityThread.get(BlackBoxCore.mainThread()).getLaunchingActivity(token);
+                if (record != null) {
+                    ActivityThreadActivityClientRecordContext clientRecordContext =
+                            BRActivityThreadActivityClientRecord.get(record);
+                    clientRecordContext._set_packageInfo(
+                            BActivityThread.currentActivityThread().getPackageInfo());
+                    Slog.i(TAG, "TIRAMISU_LAUNCH_REUSE_PACKAGE_INFO package="
+                            + activityInfo.packageName + " userId=" + stubRecord.mUserId);
+                } else {
+                    Slog.w(TAG, "TIRAMISU_LAUNCH_RECORD_MISSING package="
+                            + activityInfo.packageName + " userId=" + stubRecord.mUserId);
+                }
             } else if (BuildCompat.isS()) {
                 Object record = BRActivityThread.get(BlackBoxCore.mainThread()).getLaunchingActivity(token);
                 ActivityThreadActivityClientRecordContext clientRecordContext = BRActivityThreadActivityClientRecord.get(record);
