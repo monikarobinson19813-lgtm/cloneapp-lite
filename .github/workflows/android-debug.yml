@@ -14,6 +14,9 @@ jobs:
   assemble-debug:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      CLONEAPP_KEYSTORE_B64: ${{ secrets.CLONEAPP_KEYSTORE_B64 }}
+      CLONEAPP_KEYSTORE_PASSWORD: ${{ secrets.CLONEAPP_KEYSTORE_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,8 +39,33 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Assemble debug APK
-        run: ./gradlew assembleDebug
+      - name: Restore persistent dev signing key
+        if: ${{ env.CLONEAPP_KEYSTORE_B64 != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLONEAPP_KEYSTORE_PASSWORD:-}" ]]; then
+            echo "::error::CLONEAPP_KEYSTORE_PASSWORD is not configured"
+            exit 1
+          fi
+          printf '%s' "$CLONEAPP_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/cloneapp-dev.jks"
+          chmod 600 "$RUNNER_TEMP/cloneapp-dev.jks"
+          echo "CLONEAPP_KEYSTORE_PATH=$RUNNER_TEMP/cloneapp-dev.jks" >> "$GITHUB_ENV"
+
+      - name: Report signing mode
+        shell: bash
+        run: |
+          if [[ -n "${CLONEAPP_KEYSTORE_PATH:-}" ]]; then
+            echo "Persistent dev signing: enabled"
+          else
+            echo "::warning::Persistent dev signing is not configured; using the runner's ephemeral debug key"
+          fi
+
+      - name: Run JVM regression gates
+        run: ./gradlew testDebugUnitTest
+
+      - name: Assemble debug APKs
+        run: ./gradlew :app:assembleDebug :teststub:assembleDebug
 
       - name: Verify arm64-v8a APK
         shell: bash
@@ -51,5 +79,13 @@ jobs:
         with:
           name: cloneapp-lite-debug-apks
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload D1 clear-data test stub
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloneapp-lite-d1-teststub-apk
+          path: teststub/build/outputs/apk/debug/teststub-debug.apk
           if-no-files-found: error
           retention-days: 14

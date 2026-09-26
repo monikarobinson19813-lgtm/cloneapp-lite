@@ -3,6 +3,9 @@ plugins {
     alias(libs.plugins.jetbrains.kotlin.android)
 }
 
+def ciKeystorePath = System.getenv("CLONEAPP_KEYSTORE_PATH")
+def ciKeystorePassword = System.getenv("CLONEAPP_KEYSTORE_PASSWORD")
+
 android {
 
     namespace 'top.niunaijun.blackboxa'
@@ -28,7 +31,23 @@ android {
         }
     }
 
+    signingConfigs {
+        if (ciKeystorePath && ciKeystorePassword) {
+            ciDev {
+                storeFile file(ciKeystorePath)
+                storePassword ciKeystorePassword
+                keyAlias "cloneapp-dev"
+                keyPassword ciKeystorePassword
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (signingConfigs.findByName("ciDev") != null) {
+                signingConfig signingConfigs.ciDev
+            }
+        }
         release {
             signingConfig signingConfigs.debug
             minifyEnabled true
@@ -38,6 +57,9 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
+    }
+    testOptions {
+        unitTests.includeAndroidResources = true
     }
     buildFeatures {
         viewBinding true
@@ -69,6 +91,8 @@ dependencies {
     implementation libs.constraintlayout
     implementation libs.core.ktx
     testImplementation libs.junit
+    testImplementation 'org.robolectric:robolectric:4.13'
+    testImplementation 'androidx.test:core:1.6.1'
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core
 

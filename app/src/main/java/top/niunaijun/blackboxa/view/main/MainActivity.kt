@@ -65,6 +65,9 @@ class MainActivity : LoadingActivity() {
             
             checkStoragePermission()
 
+            checkNotificationPermission()
+            checkBatteryOptimizationExemption()
+
             
             checkVpnPermission()
 
@@ -201,6 +204,88 @@ class MainActivity : LoadingActivity() {
                 }
             }
 
+    private fun checkNotificationPermission() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                val granted =
+                        androidx.core.content.ContextCompat.checkSelfPermission(
+                                this,
+                                android.Manifest.permission.POST_NOTIFICATIONS
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (granted) {
+                    Log.d(TAG, "POST_NOTIFICATIONS already granted")
+                } else {
+                    Log.d(TAG, "Requesting POST_NOTIFICATIONS")
+                    notificationPermissionResult.launch(
+                            android.Manifest.permission.POST_NOTIFICATIONS
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking notification permission: ${e.message}")
+        }
+    }
+
+    private val notificationPermissionResult =
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                if (granted) {
+                    Log.d(TAG, "POST_NOTIFICATIONS granted")
+                } else {
+                    Log.w(TAG, "POST_NOTIFICATIONS denied")
+                }
+            }
+
+    private fun checkBatteryOptimizationExemption() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
+                return
+            }
+
+            val powerManager =
+                    getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            if (powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                Log.d(TAG, "Battery optimization exemption already granted")
+                return
+            }
+
+            val preferences =
+                    getSharedPreferences("cloneapp_acceptance", Context.MODE_PRIVATE)
+            if (preferences.getBoolean("battery_optimization_prompted", false)) {
+                Log.d(TAG, "Battery optimization exemption prompt already shown")
+                return
+            }
+
+            preferences.edit {
+                putBoolean("battery_optimization_prompted", true)
+            }
+
+            val intent =
+                    Intent(
+                            android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse("package:$packageName")
+                    )
+            Log.d(TAG, "Requesting battery optimization exemption")
+            batteryOptimizationResult.launch(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting battery optimization exemption: ${e.message}")
+        }
+    }
+
+    private val batteryOptimizationResult =
+            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                try {
+                    val powerManager =
+                            getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                    if (powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                        Log.d(TAG, "Battery optimization exemption granted")
+                    } else {
+                        Log.w(TAG, "Battery optimization exemption not granted")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error handling battery optimization result: ${e.message}")
+                }
+            }
+
     
     private fun checkVpnPermission() {
         try {
@@ -247,7 +332,7 @@ class MainActivity : LoadingActivity() {
 
     private fun initToolbarSubTitle() {
         try {
-            updateUserRemark(0)
+            updateUserRemark(currentUser)
             
             viewBinding.toolbarLayout.toolbar.getChildAt(1)?.setOnClickListener {
                 try {
@@ -295,8 +380,13 @@ class MainActivity : LoadingActivity() {
                         override fun onPageSelected(position: Int) {
                             try {
                                 super.onPageSelected(position)
-                                currentUser = fragmentList[position].userID
-                                updateUserRemark(currentUser)
+                                val selectedUser =
+                                        InstanceRouting.userForPage(
+                                                position,
+                                                fragmentList.map { it.userID }
+                                        ) ?: return
+                                currentUser = selectedUser
+                                updateUserRemark(selectedUser)
                                 showFloatButton(true)
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error in onPageSelected: ${e.message}")
@@ -313,7 +403,11 @@ class MainActivity : LoadingActivity() {
         try {
             viewBinding.fab.setOnClickListener {
                 try {
-                    val userId = viewBinding.viewPager.currentItem
+                    val userId =
+                            InstanceRouting.userForPage(
+                                    viewBinding.viewPager.currentItem,
+                                    fragmentList.map { it.userID }
+                            ) ?: return@setOnClickListener
                     val intent = Intent(this, ListActivity::class.java)
                     intent.putExtra("userID", userId)
                     apkPathResult.launch(intent)
@@ -379,7 +473,22 @@ class MainActivity : LoadingActivity() {
                             val userId = data.getIntExtra("userID", 0)
                             val source = data.getStringExtra("source")
                             if (source != null) {
-                                fragmentList[userId].installApk(source)
+                                val targetFragment =
+                                        supportFragmentManager.fragments
+                                                .filterIsInstance<AppsFragment>()
+                                                .firstOrNull { fragment ->
+                                                    fragment.isAdded &&
+                                                            fragment.arguments?.getInt("userID", -1) == userId
+                                                }
+
+                                if (targetFragment != null) {
+                                    targetFragment.installApk(source)
+                                } else {
+                                    Log.e(
+                                            TAG,
+                                            "No attached AppsFragment found for userId=$userId; refusing to use stale fragment reference"
+                                    )
+                                }
                             }
                         }
                     }

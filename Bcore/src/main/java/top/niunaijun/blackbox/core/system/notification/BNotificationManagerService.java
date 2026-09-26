@@ -105,10 +105,12 @@ public class BNotificationManagerService extends IBNotificationManagerService.St
         ProcessRecord processByPid = BProcessManagerService.get().findProcessByPid(callingPid);
         if (processByPid == null)
             return;
+        CharSequence originalName = notificationChannel.getName();
         handleNotificationChannel(notificationChannel, userId);
         mRealNotificationManager.createNotificationChannel(notificationChannel);
 
         resetNotificationChannel(notificationChannel);
+        notificationChannel.setName(originalName);
         NotificationRecord notificationRecord = getNotificationRecord(processByPid.getPackageName(), userId);
         synchronized (notificationRecord.mNotificationChannels) {
             notificationRecord.mNotificationChannels.put(notificationChannel.getId(), notificationChannel);
@@ -190,6 +192,7 @@ public class BNotificationManagerService extends IBNotificationManagerService.St
         synchronized (notificationRecord.mIds) {
             notificationRecord.mIds.add(notificationId);
         }
+        applyUserLabel(notification, userId);
         mRealNotificationManager.notify(notificationId, notification);
     }
 
@@ -214,6 +217,7 @@ public class BNotificationManagerService extends IBNotificationManagerService.St
         String blackChannelId = getBlackChannelId(channelId, userId);
         channelContext._set_mId(blackChannelId);
 
+        NotificationIdentity.applyChannelName(notificationChannel, userId);
         notificationChannel.setGroup(getBlackGroupId(notificationChannel.getGroup(), userId));
     }
 
@@ -271,11 +275,12 @@ public class BNotificationManagerService extends IBNotificationManagerService.St
         removeNotificationRecord(packageName, userId);
     }
 
+    private void applyUserLabel(Notification notification, int userId) {
+        NotificationIdentity.applyNotificationSubText(notification, userId);
+    }
+
     private String getBlackChannelId(String channelId, int userId) {
-        if (channelId == null || channelId.contains(CHANNEL_BLACK)) {
-            return channelId;
-        }
-        return channelId + CHANNEL_BLACK + userId;
+        return NotificationIdentity.channelId(channelId, userId);
     }
 
     private String getRealChannelId(String channelId) {
@@ -286,9 +291,7 @@ public class BNotificationManagerService extends IBNotificationManagerService.St
     }
 
     private String getBlackGroupId(String groupId, int userId) {
-        if (groupId == null || groupId.contains(GROUP_BLACK))
-            return groupId;
-        return groupId + GROUP_BLACK + userId;
+        return NotificationIdentity.groupId(groupId, userId);
     }
 
     private String getRealGroupId(String groupId) {
