@@ -93,23 +93,30 @@ public class ExternalViewContentProvider extends ContentProvider {
                 + " file=" + resolved.file.getAbsolutePath());
 
         Handler handler = new Handler(Looper.getMainLooper());
-        return ParcelFileDescriptor.open(
-                resolved.file,
-                ParcelFileDescriptor.MODE_READ_ONLY,
-                handler,
-                e -> {
-                    boolean deleted = resolved.file.delete();
-                    File parent = resolved.file.getParentFile();
-                    if (parent != null) {
-                        String[] children = parent.list();
-                        if (children != null && children.length == 0) {
-                            parent.delete();
+        try {
+            return ParcelFileDescriptor.open(
+                    resolved.file,
+                    ParcelFileDescriptor.MODE_READ_ONLY,
+                    handler,
+                    e -> {
+                        boolean deleted = resolved.file.delete();
+                        File parent = resolved.file.getParentFile();
+                        if (parent != null) {
+                            String[] children = parent.list();
+                            if (children != null && children.length == 0) {
+                                parent.delete();
+                            }
                         }
-                    }
-                    Slog.i(TAG, "EXTERNAL_VIEW_TEMP_DELETED userId=" + resolved.userId
-                            + " deleted=" + deleted
-                            + " file=" + resolved.file.getAbsolutePath());
-                });
+                        Slog.i(TAG, "EXTERNAL_VIEW_TEMP_DELETED userId=" + resolved.userId
+                                + " deleted=" + deleted
+                                + " file=" + resolved.file.getAbsolutePath());
+                    });
+        } catch (java.io.IOException e) {
+            FileNotFoundException notFound = new FileNotFoundException(
+                    "Unable to open external-view file");
+            notFound.initCause(e);
+            throw notFound;
+        }
     }
 
     private ResolvedFile resolveAndEnforce(Uri uri) {
