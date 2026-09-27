@@ -69,7 +69,11 @@ class MainActivity : LoadingActivity() {
             checkBatteryOptimizationExemption()
 
             
-            checkVpnPermission()
+            if (AppManager.mBlackBoxLoader.useVpnNetwork()) {
+                checkVpnPermission()
+            } else {
+                Log.d(TAG, "CloneApp VPN feature gate disabled; skipping VPN consent")
+            }
 
             try {
                 BlackBoxCore.get().onAfterMainActivityOnCreate(this)
