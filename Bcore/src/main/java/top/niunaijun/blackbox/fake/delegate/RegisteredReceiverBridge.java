@@ -10,7 +10,6 @@ import java.lang.ref.WeakReference;
 import black.android.app.BRLoadedApkReceiverDispatcher;
 import black.android.app.BRLoadedApkReceiverDispatcherInnerReceiver;
 import black.android.content.BRBroadcastReceiver;
-import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.proxy.record.ProxyBroadcastRecord;
 import top.niunaijun.blackbox.utils.Slog;
 
@@ -68,7 +67,7 @@ public final class RegisteredReceiverBridge extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        Intent deliveredIntent = unwrap(intent);
+        Intent deliveredIntent = unwrap(intent, context != null ? context.getClassLoader() : null);
 
         BroadcastReceiver.PendingResult frameworkPending =
                 BRBroadcastReceiver.get(this).getPendingResult();
@@ -85,15 +84,19 @@ public final class RegisteredReceiverBridge extends BroadcastReceiver {
         }
     }
 
-    static Intent unwrap(Intent intent) {
+    static Intent unwrap(Intent intent, ClassLoader classLoader) {
         if (intent == null) {
             return null;
         }
 
-        intent.setExtrasClassLoader(BlackBoxCore.getApplication().getClassLoader());
+        if (classLoader != null) {
+            intent.setExtrasClassLoader(classLoader);
+        }
         ProxyBroadcastRecord proxyRecord = ProxyBroadcastRecord.create(intent);
         Intent delivered = proxyRecord.mIntent != null ? proxyRecord.mIntent : intent;
-        delivered.setExtrasClassLoader(BlackBoxCore.getApplication().getClassLoader());
+        if (classLoader != null) {
+            delivered.setExtrasClassLoader(classLoader);
+        }
         return delivered;
     }
 
