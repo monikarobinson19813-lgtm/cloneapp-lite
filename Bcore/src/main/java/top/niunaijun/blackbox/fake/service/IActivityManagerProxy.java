@@ -31,11 +31,13 @@ import black.android.util.BRSingleton;
 import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.core.env.AppSystemEnv;
+import top.niunaijun.blackbox.core.system.permission.MediaPermissionPolicy;
 import top.niunaijun.blackbox.entity.AppConfig;
 import top.niunaijun.blackbox.entity.am.RunningAppProcessInfo;
 import top.niunaijun.blackbox.entity.am.RunningServiceInfo;
 import top.niunaijun.blackbox.fake.delegate.ContentProviderDelegate;
 import top.niunaijun.blackbox.fake.delegate.InnerReceiverDelegate;
+import top.niunaijun.blackbox.fake.delegate.RegisteredReceiverBridge;
 import top.niunaijun.blackbox.fake.delegate.ServiceConnectionDelegate;
 import top.niunaijun.blackbox.fake.frameworks.BActivityManager;
 import top.niunaijun.blackbox.fake.frameworks.BPackageManager;
@@ -111,7 +113,9 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             Slog.w(TAG, "ActivityManager invoke: SecurityException in " + methodName + ", returning safe default", e);
             
             
-            if (methodName.startsWith("set") || methodName.startsWith("update")) {
+            if ("clearApplicationUserData".equals(methodName)) {
+                return false;
+            } else if (methodName.startsWith("set") || methodName.startsWith("update")) {
                 return null; 
             } else if (methodName.startsWith("get") || methodName.startsWith("query")) {
                 return null; 
@@ -589,6 +593,17 @@ public class IActivityManagerProxy extends ClassInvocationStub {
                     args[i] = null;
                 }
             }
+
+            // Guest apps may request a broadcast as UserHandle.ALL (-1).  The
+            // virtual user has already been consumed above by sendBroadcast();
+            // never forward that virtual/all-users id to the real framework,
+            // because the host app does not hold INTERACT_ACROSS_USERS.
+            if (BroadcastUserIdCompat.rewriteLastUserId(args, BlackBoxCore.getHostUserId())) {
+                Slog.d(TAG, "BroadcastIntent: mapped framework user to host user "
+                        + BlackBoxCore.getHostUserId());
+            } else {
+                Slog.w(TAG, "BroadcastIntent: framework user argument not found; leaving call unchanged");
+            }
             return method.invoke(who, args);
         }
 
@@ -662,14 +677,21 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             int receiverIndex = getReceiverIndex();
             if (args[receiverIndex] != null) {
                 IIntentReceiver intentReceiver = (IIntentReceiver) args[receiverIndex];
-                IIntentReceiver proxy = InnerReceiverDelegate.createProxy(intentReceiver);
-
-                WeakReference<?> weakReference = BRLoadedApkReceiverDispatcherInnerReceiver.get(intentReceiver).mDispatcher();
-                if (weakReference != null) {
-                    BRLoadedApkReceiverDispatcher.get(weakReference.get())._set_mIIntentReceiver(proxy);
+                if (BuildCompat.isU()) {
+                    // Android 14 ActivityThread carries registered-receiver completion
+                    // metadata only when the framework InnerReceiver remains registered.
+                    // Keep that binder intact and unwrap virtual intents one layer later,
+                    // at BroadcastReceiver.onReceive().
+                    RegisteredReceiverBridge.install(intentReceiver);
+                } else {
+                    IIntentReceiver proxy = InnerReceiverDelegate.createProxy(intentReceiver);
+                    WeakReference<?> weakReference =
+                            BRLoadedApkReceiverDispatcherInnerReceiver.get(intentReceiver).mDispatcher();
+                    if (weakReference != null) {
+                        BRLoadedApkReceiverDispatcher.get(weakReference.get())._set_mIIntentReceiver(proxy);
+                    }
+                    args[receiverIndex] = proxy;
                 }
-
-                args[receiverIndex] = proxy;
             }
             
             if (args[getPermissionIndex()] != null) {
@@ -713,14 +735,21 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             int receiverIndex = 2;
             if (args[receiverIndex] != null) {
                 IIntentReceiver intentReceiver = (IIntentReceiver) args[receiverIndex];
-                IIntentReceiver proxy = InnerReceiverDelegate.createProxy(intentReceiver);
-
-                WeakReference<?> weakReference = BRLoadedApkReceiverDispatcherInnerReceiver.get(intentReceiver).mDispatcher();
-                if (weakReference != null) {
-                    BRLoadedApkReceiverDispatcher.get(weakReference.get())._set_mIIntentReceiver(proxy);
+                if (BuildCompat.isU()) {
+                    // Android 14 ActivityThread carries registered-receiver completion
+                    // metadata only when the framework InnerReceiver remains registered.
+                    // Keep that binder intact and unwrap virtual intents one layer later,
+                    // at BroadcastReceiver.onReceive().
+                    RegisteredReceiverBridge.install(intentReceiver);
+                } else {
+                    IIntentReceiver proxy = InnerReceiverDelegate.createProxy(intentReceiver);
+                    WeakReference<?> weakReference =
+                            BRLoadedApkReceiverDispatcherInnerReceiver.get(intentReceiver).mDispatcher();
+                    if (weakReference != null) {
+                        BRLoadedApkReceiverDispatcher.get(weakReference.get())._set_mIIntentReceiver(proxy);
+                    }
+                    args[receiverIndex] = proxy;
                 }
-
-                args[receiverIndex] = proxy;
             }
             int permissionIndex = 4;
             
@@ -744,14 +773,8 @@ public class IActivityManagerProxy extends ClassInvocationStub {
     public static class setServiceForeground extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            
-            
-            for (int i = args.length - 1; i >= 0; i--) {
-                if (args[i] instanceof Integer) {
-                    args[i] = 0; 
-                    break;
-                }
-            }
+            // Preserve Android's foreground-service type. Clearing the last integer
+            // downgrades microphone services on modern Android and breaks call semantics.
             return method.invoke(who, args);
         }
     }
@@ -785,9 +808,15 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             }
             
             
-            if (isAudioPermission(permission)) {
-                Slog.d(TAG, "ActivityManager checkPermission: Granting audio permission: " + permission);
-                return PackageManager.PERMISSION_GRANTED;
+            if (MediaPermissionPolicy.isRuntimeMediaPermission(permission)) {
+                int result = MediaPermissionPolicy.permissionResult(
+                        BlackBoxCore.getContext(),
+                        BActivityThread.getAppPackageName(),
+                        BActivityThread.getUserId(),
+                        permission
+                );
+                Slog.d(TAG, "ActivityManager checkPermission: media permission " + permission + " result=" + result);
+                return result;
             }
 
             

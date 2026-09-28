@@ -25,6 +25,7 @@ import black.android.content.pm.BRPackageManager;
 import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.core.env.AppSystemEnv;
+import top.niunaijun.blackbox.core.system.permission.MediaPermissionPolicy;
 import top.niunaijun.blackbox.fake.FakeCore;
 import top.niunaijun.blackbox.fake.hook.BinderInvocationStub;
 import top.niunaijun.blackbox.fake.hook.MethodHook;
@@ -144,11 +145,18 @@ public class IPackageManagerProxy extends BinderInvocationStub {
                 if (packageInfo.requestedPermissions != null && packageInfo.requestedPermissionsFlags != null) {
                     for (int i = 0; i < packageInfo.requestedPermissions.length; i++) {
                         String perm = packageInfo.requestedPermissions[i];
-                        if (perm != null && (perm.equals(android.Manifest.permission.RECORD_AUDIO)
-                                || perm.equals("android.permission.FOREGROUND_SERVICE_MICROPHONE")
-                                || perm.equals(android.Manifest.permission.MODIFY_AUDIO_SETTINGS)
-                                || perm.equals(android.Manifest.permission.CAPTURE_AUDIO_OUTPUT))) {
-                            packageInfo.requestedPermissionsFlags[i] |= PackageInfo.REQUESTED_PERMISSION_GRANTED;
+                        if (MediaPermissionPolicy.isRuntimeMediaPermission(perm)) {
+                            int result = MediaPermissionPolicy.permissionResult(
+                                    BlackBoxCore.getContext(),
+                                    packageName,
+                                    BlackBoxCore.getUserId(),
+                                    perm
+                            );
+                            if (result == PackageManager.PERMISSION_GRANTED) {
+                                packageInfo.requestedPermissionsFlags[i] |= PackageInfo.REQUESTED_PERMISSION_GRANTED;
+                            } else {
+                                packageInfo.requestedPermissionsFlags[i] &= ~PackageInfo.REQUESTED_PERMISSION_GRANTED;
+                            }
                         }
                     }
                 }
@@ -314,7 +322,7 @@ public class IPackageManagerProxy extends BinderInvocationStub {
             String type = MethodParameterUtils.getFirstParam(args, String.class);
             Integer flags = MethodParameterUtils.getFirstParam(args, Integer.class);
             List<ResolveInfo> resolves = BlackBoxCore.getBPackageManager().queryBroadcastReceivers(intent, flags, type, BActivityThread.getUserId());
-            Slog.d(TAG, "queryIntentReceivers: " + resolves);
+            Slog.d(TAG, ResolveInfoLogSummary.summarize("queryIntentReceivers", resolves));
 
             
             if (BuildCompat.isN()) {
@@ -416,9 +424,15 @@ public class IPackageManagerProxy extends BinderInvocationStub {
             String packageName = (String) args[1];
             
             
-            if (isAudioPermission(permission)) {
-                Slog.d(TAG, "SimpleAudioPermissionHook: Granting audio permission: " + permission + " to " + packageName);
-                return PackageManager.PERMISSION_GRANTED;
+            if (MediaPermissionPolicy.isRuntimeMediaPermission(permission)) {
+                int result = MediaPermissionPolicy.permissionResult(
+                        BlackBoxCore.getContext(),
+                        packageName,
+                        BlackBoxCore.getUserId(),
+                        permission
+                );
+                Slog.d(TAG, "SimpleAudioPermissionHook: media permission " + permission + " result=" + result + " for " + packageName);
+                return result;
             }
 
             
@@ -446,9 +460,15 @@ public class IPackageManagerProxy extends BinderInvocationStub {
             String packageName = (String) args[1];
             
             
-            if (isAudioPermission(permission)) {
-                Slog.d(TAG, "CheckSelfPermission: Granting audio permission: " + permission + " to " + packageName);
-                return PackageManager.PERMISSION_GRANTED;
+            if (MediaPermissionPolicy.isRuntimeMediaPermission(permission)) {
+                int result = MediaPermissionPolicy.permissionResult(
+                        BlackBoxCore.getContext(),
+                        packageName,
+                        BlackBoxCore.getUserId(),
+                        permission
+                );
+                Slog.d(TAG, "CheckSelfPermission: media permission " + permission + " result=" + result + " for " + packageName);
+                return result;
             }
 
             

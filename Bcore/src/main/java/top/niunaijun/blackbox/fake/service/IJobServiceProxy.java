@@ -43,37 +43,33 @@ public class IJobServiceProxy extends BinderInvocationStub {
                 
                 if (args == null || args.length == 0) {
                     Slog.w(TAG, "Schedule: No arguments provided, returning RESULT_FAILURE");
-                    return 0; 
+                    return 0;
                 }
-                
-                if (args[0] == null) {
-                    Slog.w(TAG, "Schedule: args[0] is null, returning RESULT_FAILURE");
-                    return 0; 
+
+                int jobInfoIndex = findJobInfoIndex(args);
+                if (jobInfoIndex < 0) {
+                    Slog.w(TAG, "Schedule: No JobInfo argument found, delegating unchanged");
+                    return method.invoke(who, args);
                 }
-                
-                if (!(args[0] instanceof JobInfo)) {
-                    Slog.w(TAG, "Schedule: args[0] is not JobInfo: " + args[0].getClass().getSimpleName());
-                    
-                    return handleNonJobInfoSchedule(who, method, args);
-                }
-                
-                JobInfo jobInfo = (JobInfo) args[0];
-                Slog.d(TAG, "Schedule: Processing JobInfo for package: " + jobInfo.getService().getPackageName());
+
+                JobInfo jobInfo = (JobInfo) args[jobInfoIndex];
+                Slog.d(TAG, "Schedule: Processing JobInfo at index " + jobInfoIndex
+                        + " for package: " + jobInfo.getService().getPackageName());
                 
                 
                 try {
                     JobInfo proxyJobInfo = BlackBoxCore.getBJobManager().schedule(jobInfo);
-                    if (proxyJobInfo != null) {
-                        args[0] = proxyJobInfo;
-                        Slog.d(TAG, "Schedule: Successfully created proxy JobInfo");
-                        return method.invoke(who, args);
+                    if (proxyJobInfo == null) {
+                        Slog.w(TAG, "Schedule: Virtual JobService target rejected; returning RESULT_FAILURE");
+                        return 0;
                     }
+                    args[jobInfoIndex] = proxyJobInfo;
+                    Slog.d(TAG, "Schedule: Successfully created proxy JobInfo at index " + jobInfoIndex);
+                    return method.invoke(who, args);
                 } catch (Exception e) {
-                    Slog.w(TAG, "Schedule: BlackBox job manager failed, trying system fallback", e);
+                    Slog.w(TAG, "Schedule: BlackBox job manager failed closed", e);
+                    return 0;
                 }
-                
-                
-                return scheduleWithUIDSpoofing(who, method, args, jobInfo);
                 
             } catch (Exception e) {
                 Slog.e(TAG, "Schedule: Error processing job", e);
@@ -219,37 +215,33 @@ public class IJobServiceProxy extends BinderInvocationStub {
                 
                 if (args == null || args.length == 0) {
                     Slog.w(TAG, "Enqueue: No arguments provided, returning RESULT_FAILURE");
-                    return 0; 
+                    return 0;
                 }
-                
-                if (args[0] == null) {
-                    Slog.w(TAG, "Enqueue: args[0] is null, returning RESULT_FAILURE");
-                    return 0; 
+
+                int jobInfoIndex = findJobInfoIndex(args);
+                if (jobInfoIndex < 0) {
+                    Slog.w(TAG, "Enqueue: No JobInfo argument found, delegating unchanged");
+                    return method.invoke(who, args);
                 }
-                
-                if (!(args[0] instanceof JobInfo)) {
-                    Slog.w(TAG, "Enqueue: args[0] is not JobInfo: " + args[0].getClass().getSimpleName());
-                    
-                    return handleNonJobInfoEnqueue(who, method, args);
-                }
-                
-                JobInfo jobInfo = (JobInfo) args[0];
-                Slog.d(TAG, "Enqueue: Processing JobInfo for package: " + jobInfo.getService().getPackageName());
+
+                JobInfo jobInfo = (JobInfo) args[jobInfoIndex];
+                Slog.d(TAG, "Enqueue: Processing JobInfo at index " + jobInfoIndex
+                        + " for package: " + jobInfo.getService().getPackageName());
                 
                 
                 try {
                     JobInfo proxyJobInfo = BlackBoxCore.getBJobManager().schedule(jobInfo);
-                    if (proxyJobInfo != null) {
-                        args[0] = proxyJobInfo;
-                        Slog.d(TAG, "Enqueue: Successfully created proxy JobInfo");
-                        return method.invoke(who, args);
+                    if (proxyJobInfo == null) {
+                        Slog.w(TAG, "Enqueue: Virtual JobService target rejected; returning RESULT_FAILURE");
+                        return 0;
                     }
+                    args[jobInfoIndex] = proxyJobInfo;
+                    Slog.d(TAG, "Enqueue: Successfully created proxy JobInfo at index " + jobInfoIndex);
+                    return method.invoke(who, args);
                 } catch (Exception e) {
-                    Slog.w(TAG, "Enqueue: BlackBox job manager failed, trying system fallback", e);
+                    Slog.w(TAG, "Enqueue: BlackBox job manager failed closed", e);
+                    return 0;
                 }
-                
-                
-                return enqueueWithUIDSpoofing(who, method, args, jobInfo);
                 
             } catch (Exception e) {
                 Slog.e(TAG, "Enqueue: Error processing job", e);
@@ -350,6 +342,18 @@ public class IJobServiceProxy extends BinderInvocationStub {
             
             return false;
         }
+    }
+
+    private static int findJobInfoIndex(Object[] args) {
+        if (args == null) {
+            return -1;
+        }
+        for (int i = 0; i < args.length; i++) {
+            if (args[i] instanceof JobInfo) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     @Override
