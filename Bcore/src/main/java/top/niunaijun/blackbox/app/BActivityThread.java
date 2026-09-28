@@ -68,6 +68,7 @@ import top.niunaijun.blackbox.core.IOCore;
 import top.niunaijun.blackbox.core.NativeCore;
 import top.niunaijun.blackbox.core.env.VirtualRuntime;
 import top.niunaijun.blackbox.core.system.user.BUserHandle;
+import top.niunaijun.blackbox.core.system.am.JobServicePolicy;
 import top.niunaijun.blackbox.entity.AppConfig;
 import top.niunaijun.blackbox.entity.am.ReceiverData;
 
@@ -264,7 +265,14 @@ public class BActivityThread extends IBActivityThread.Stub {
         ClassLoader classLoader = BRLoadedApk.get(mBoundApplication.info).getClassLoader();
         JobService service;
         try {
-            service = (JobService) classLoader.loadClass(serviceInfo.name).newInstance();
+            Object candidate = classLoader.loadClass(serviceInfo.name).newInstance();
+            service = JobServicePolicy.asJobService(candidate);
+            if (service == null) {
+                Slog.w(TAG, "CLF9_JOB_SERVICE_REJECT reason=runtime_type component="
+                        + serviceInfo.name + " actualType="
+                        + (candidate == null ? "null" : candidate.getClass().getName()));
+                return null;
+            }
         } catch (ClassNotFoundException e) {
             
             if (serviceInfo.name.contains("google.android.gms") || 
