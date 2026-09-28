@@ -1,5 +1,6 @@
 package top.niunaijun.blackbox.fake.delegate
 
+import android.app.Application
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -19,7 +20,7 @@ import org.robolectric.annotation.Config
 import top.niunaijun.blackbox.proxy.record.ProxyBroadcastRecord
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], application = Application::class)
 class RegisteredReceiverBridgeRobolectricTest {
 
     private lateinit var context: Context
