@@ -94,7 +94,7 @@ public class ProxyService extends Service {
         int serviceType = 0;
         if (record.mServiceInfo != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             serviceType = ServiceStartPolicy.supportedForegroundServiceType(
-                    record.mServiceInfo.foregroundServiceType
+                    ServiceStartPolicy.readForegroundServiceType(record.mServiceInfo)
             );
         }
 
