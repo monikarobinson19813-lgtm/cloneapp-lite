@@ -44,6 +44,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
         String methodName = method.getName();
+        logClf9Identity(methodName, args);
         
         
         
@@ -228,6 +229,48 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
             }
             return method.invoke(who, args);
         }
+    }
+
+    private static void logClf9Identity(String methodName, Object[] args) {
+        if (!(methodName.startsWith("check")
+                || methodName.startsWith("note")
+                || methodName.startsWith("start")
+                || methodName.startsWith("finish"))) {
+            return;
+        }
+
+        String presentedPkg = null;
+        Integer presentedUid = null;
+        if (args != null) {
+            for (Object arg : args) {
+                if (presentedPkg == null && arg instanceof String) {
+                    String value = (String) arg;
+                    if (value.indexOf('.') > 0 && value.indexOf(' ') < 0) {
+                        presentedPkg = value;
+                    }
+                }
+                if (presentedUid == null && arg instanceof Integer) {
+                    int value = (Integer) arg;
+                    if (value >= android.os.Process.FIRST_APPLICATION_UID
+                            && value <= android.os.Process.LAST_APPLICATION_UID) {
+                        presentedUid = value;
+                    }
+                }
+            }
+        }
+
+        if (presentedPkg == null && presentedUid == null) {
+            return;
+        }
+
+        Slog.i(TAG, "CLF9_IDENTITY"
+                + " method=" + methodName
+                + " presentedPkg=" + presentedPkg
+                + " presentedUid=" + presentedUid
+                + " hostPkg=" + BlackBoxCore.getHostPkg()
+                + " hostUid=" + BlackBoxCore.getHostUid()
+                + " currentPkg=" + BlackBoxCore.get().getCurrentAppPackage()
+                + " currentUid=" + BlackBoxCore.get().getCurrentAppUid());
     }
 
     private static boolean isMediaStorageOrAudioOp(String opPublicNameOrStr) {
