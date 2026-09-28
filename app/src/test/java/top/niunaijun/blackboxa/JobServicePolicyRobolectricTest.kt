@@ -24,7 +24,7 @@ class JobServicePolicyRobolectricTest {
     @Test
     fun acceptsServiceProtectedByBindJobService() {
         val info = ServiceInfo().apply {
-            permission = Manifest.permission.BIND_JOB_SERVICE
+            permission = "android.permission.BIND_JOB_SERVICE"
         }
 
         assertTrue(JobServicePolicy.isSchedulableJobService(info))
