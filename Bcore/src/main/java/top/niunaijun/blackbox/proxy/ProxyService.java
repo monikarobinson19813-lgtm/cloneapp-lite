@@ -12,9 +12,11 @@ import android.os.IBinder;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
+import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.dispatcher.AppServiceDispatcher;
 import top.niunaijun.blackbox.core.system.am.ServiceStartPolicy;
 import top.niunaijun.blackbox.proxy.record.ProxyServiceRecord;
+import top.niunaijun.blackbox.utils.Slog;
 
 
 public class ProxyService extends Service {
@@ -69,6 +71,20 @@ public class ProxyService extends Service {
     }
 
     private void ensureBridgeForeground(ProxyServiceRecord record) {
+        int requestedServiceType = record.mServiceInfo == null
+                ? 0
+                : ServiceStartPolicy.readForegroundServiceType(record.mServiceInfo);
+        int serviceType = 0;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            serviceType = ServiceStartPolicy.supportedForegroundServiceType(requestedServiceType);
+        }
+
+        Slog.i(TAG, "CLF9_FGS_BRIDGE phase=enter"
+                + " uid=" + BlackBoxCore.getHostUid()
+                + " pkg=" + getPackageName()
+                + " requestedType=" + requestedServiceType
+                + " actualType=" + serviceType);
+
         final String channelId = getPackageName() + ".blackbox_proxy";
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
@@ -91,18 +107,18 @@ public class ProxyService extends Service {
                 .build();
 
         int notificationId = (getPackageName() + ":" + getClass().getName()).hashCode();
-        int serviceType = 0;
-        if (record.mServiceInfo != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            serviceType = ServiceStartPolicy.supportedForegroundServiceType(
-                    ServiceStartPolicy.readForegroundServiceType(record.mServiceInfo)
-            );
-        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && serviceType != 0) {
             startForeground(notificationId, notification, serviceType);
         } else {
             startForeground(notificationId, notification);
         }
+
+        Slog.i(TAG, "CLF9_FGS_BRIDGE phase=after_startForeground"
+                + " uid=" + BlackBoxCore.getHostUid()
+                + " pkg=" + getPackageName()
+                + " requestedType=" + requestedServiceType
+                + " actualType=" + serviceType);
     }
 
     public static class P0 extends ProxyService {
