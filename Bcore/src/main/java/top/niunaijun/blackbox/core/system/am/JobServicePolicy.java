@@ -19,7 +19,7 @@ public final class JobServicePolicy {
 
     public static boolean isSchedulableJobService(ServiceInfo serviceInfo) {
         return serviceInfo != null
-                && Manifest.permission.BIND_JOB_SERVICE.equals(serviceInfo.permission);
+                && "android.permission.BIND_JOB_SERVICE".equals(serviceInfo.permission);
     }
 
     public static JobService asJobService(Object candidate) {
