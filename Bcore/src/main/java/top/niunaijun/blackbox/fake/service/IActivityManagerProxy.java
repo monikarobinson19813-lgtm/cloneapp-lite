@@ -37,6 +37,7 @@ import top.niunaijun.blackbox.entity.am.RunningAppProcessInfo;
 import top.niunaijun.blackbox.entity.am.RunningServiceInfo;
 import top.niunaijun.blackbox.fake.delegate.ContentProviderDelegate;
 import top.niunaijun.blackbox.fake.delegate.InnerReceiverDelegate;
+import top.niunaijun.blackbox.fake.delegate.RegisteredReceiverBridge;
 import top.niunaijun.blackbox.fake.delegate.ServiceConnectionDelegate;
 import top.niunaijun.blackbox.fake.frameworks.BActivityManager;
 import top.niunaijun.blackbox.fake.frameworks.BPackageManager;
@@ -676,14 +677,21 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             int receiverIndex = getReceiverIndex();
             if (args[receiverIndex] != null) {
                 IIntentReceiver intentReceiver = (IIntentReceiver) args[receiverIndex];
-                IIntentReceiver proxy = InnerReceiverDelegate.createProxy(intentReceiver);
-
-                WeakReference<?> weakReference = BRLoadedApkReceiverDispatcherInnerReceiver.get(intentReceiver).mDispatcher();
-                if (weakReference != null) {
-                    BRLoadedApkReceiverDispatcher.get(weakReference.get())._set_mIIntentReceiver(proxy);
+                if (BuildCompat.isU()) {
+                    // Android 14 ActivityThread carries registered-receiver completion
+                    // metadata only when the framework InnerReceiver remains registered.
+                    // Keep that binder intact and unwrap virtual intents one layer later,
+                    // at BroadcastReceiver.onReceive().
+                    RegisteredReceiverBridge.install(intentReceiver);
+                } else {
+                    IIntentReceiver proxy = InnerReceiverDelegate.createProxy(intentReceiver);
+                    WeakReference<?> weakReference =
+                            BRLoadedApkReceiverDispatcherInnerReceiver.get(intentReceiver).mDispatcher();
+                    if (weakReference != null) {
+                        BRLoadedApkReceiverDispatcher.get(weakReference.get())._set_mIIntentReceiver(proxy);
+                    }
+                    args[receiverIndex] = proxy;
                 }
-
-                args[receiverIndex] = proxy;
             }
             
             if (args[getPermissionIndex()] != null) {
@@ -727,14 +735,21 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             int receiverIndex = 2;
             if (args[receiverIndex] != null) {
                 IIntentReceiver intentReceiver = (IIntentReceiver) args[receiverIndex];
-                IIntentReceiver proxy = InnerReceiverDelegate.createProxy(intentReceiver);
-
-                WeakReference<?> weakReference = BRLoadedApkReceiverDispatcherInnerReceiver.get(intentReceiver).mDispatcher();
-                if (weakReference != null) {
-                    BRLoadedApkReceiverDispatcher.get(weakReference.get())._set_mIIntentReceiver(proxy);
+                if (BuildCompat.isU()) {
+                    // Android 14 ActivityThread carries registered-receiver completion
+                    // metadata only when the framework InnerReceiver remains registered.
+                    // Keep that binder intact and unwrap virtual intents one layer later,
+                    // at BroadcastReceiver.onReceive().
+                    RegisteredReceiverBridge.install(intentReceiver);
+                } else {
+                    IIntentReceiver proxy = InnerReceiverDelegate.createProxy(intentReceiver);
+                    WeakReference<?> weakReference =
+                            BRLoadedApkReceiverDispatcherInnerReceiver.get(intentReceiver).mDispatcher();
+                    if (weakReference != null) {
+                        BRLoadedApkReceiverDispatcher.get(weakReference.get())._set_mIIntentReceiver(proxy);
+                    }
+                    args[receiverIndex] = proxy;
                 }
-
-                args[receiverIndex] = proxy;
             }
             int permissionIndex = 4;
             
