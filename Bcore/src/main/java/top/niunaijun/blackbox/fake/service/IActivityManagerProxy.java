@@ -31,6 +31,7 @@ import black.android.util.BRSingleton;
 import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.core.env.AppSystemEnv;
+import top.niunaijun.blackbox.core.system.permission.MediaPermissionPolicy;
 import top.niunaijun.blackbox.entity.AppConfig;
 import top.niunaijun.blackbox.entity.am.RunningAppProcessInfo;
 import top.niunaijun.blackbox.entity.am.RunningServiceInfo;
@@ -757,14 +758,8 @@ public class IActivityManagerProxy extends ClassInvocationStub {
     public static class setServiceForeground extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            
-            
-            for (int i = args.length - 1; i >= 0; i--) {
-                if (args[i] instanceof Integer) {
-                    args[i] = 0; 
-                    break;
-                }
-            }
+            // Preserve Android's foreground-service type. Clearing the last integer
+            // downgrades microphone services on modern Android and breaks call semantics.
             return method.invoke(who, args);
         }
     }
@@ -798,9 +793,15 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             }
             
             
-            if (isAudioPermission(permission)) {
-                Slog.d(TAG, "ActivityManager checkPermission: Granting audio permission: " + permission);
-                return PackageManager.PERMISSION_GRANTED;
+            if (MediaPermissionPolicy.isRuntimeMediaPermission(permission)) {
+                int result = MediaPermissionPolicy.permissionResult(
+                        BlackBoxCore.getContext(),
+                        BActivityThread.getAppPackageName(),
+                        BActivityThread.getUserId(),
+                        permission
+                );
+                Slog.d(TAG, "ActivityManager checkPermission: media permission " + permission + " result=" + result);
+                return result;
             }
 
             

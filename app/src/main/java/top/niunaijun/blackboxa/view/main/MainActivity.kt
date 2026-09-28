@@ -66,6 +66,7 @@ class MainActivity : LoadingActivity() {
             checkStoragePermission()
 
             checkNotificationPermission()
+            checkMicrophoneCapabilityPermission()
             checkBatteryOptimizationExemption()
 
             
@@ -236,6 +237,34 @@ class MainActivity : LoadingActivity() {
                     Log.d(TAG, "POST_NOTIFICATIONS granted")
                 } else {
                     Log.w(TAG, "POST_NOTIFICATIONS denied")
+                }
+            }
+
+    private fun checkMicrophoneCapabilityPermission() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) return
+            val granted =
+                    androidx.core.content.ContextCompat.checkSelfPermission(
+                            this,
+                            android.Manifest.permission.RECORD_AUDIO
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (granted) {
+                Log.d(TAG, "Host RECORD_AUDIO capability already granted")
+            } else {
+                Log.d(TAG, "Requesting host RECORD_AUDIO capability for cloned-app voice calls")
+                microphonePermissionResult.launch(android.Manifest.permission.RECORD_AUDIO)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking microphone capability permission: ${e.message}")
+        }
+    }
+
+    private val microphonePermissionResult =
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                if (granted) {
+                    Log.d(TAG, "Host RECORD_AUDIO capability granted")
+                } else {
+                    Log.w(TAG, "Host RECORD_AUDIO capability denied; clone microphone access remains denied")
                 }
             }
 
