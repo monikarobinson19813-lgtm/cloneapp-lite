@@ -12,11 +12,9 @@ import android.os.IBinder;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
-import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.dispatcher.AppServiceDispatcher;
 import top.niunaijun.blackbox.core.system.am.ServiceStartPolicy;
 import top.niunaijun.blackbox.proxy.record.ProxyServiceRecord;
-import top.niunaijun.blackbox.utils.compat.BuildCompat;
 
 
 public class ProxyService extends Service {
