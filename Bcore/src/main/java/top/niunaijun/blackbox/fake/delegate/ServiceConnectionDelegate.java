@@ -4,6 +4,7 @@ import android.app.IServiceConnection;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.os.IBinder;
+import android.os.Parcel;
 import android.os.RemoteException;
 
 import java.util.HashMap;
@@ -49,6 +50,20 @@ public class ServiceConnectionDelegate extends IServiceConnection.Stub {
             sServiceConnectDelegate.put(iBinder, delegate);
         }
         return delegate;
+    }
+
+    @Override
+    public boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
+        if ("com.whatsapp".equals(BActivityThread.getAppPackageName())) {
+            Slog.d(TAG, "WA_SERVICE_CONNECTION_CALLBACK guestPackage="
+                    + BActivityThread.getAppPackageName()
+                    + " process=" + BActivityThread.getAppProcessName()
+                    + " userId=" + BActivityThread.getUserId()
+                    + " target=" + (mComponentName == null ? null : mComponentName.flattenToShortString())
+                    + " code=" + code
+                    + " flags=" + flags);
+        }
+        return super.onTransact(code, data, reply, flags);
     }
 
     @Override
