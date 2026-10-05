@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
 import android.os.Binder;
+import android.os.Build;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.util.Log;
@@ -56,7 +57,14 @@ public class ActiveServices {
             @Override
             public void run() {
                 try {
-                    BlackBoxCore.getContext().startService(stubServiceIntent);
+                    Context context = BlackBoxCore.getContext();
+                    if (requireForeground && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        Log.i(TAG, "CLF9_BISECT_BUILD2_FGS_START user=" + userId
+                                + " service=" + serviceInfo.packageName + "/" + serviceInfo.name);
+                        context.startForegroundService(stubServiceIntent);
+                    } else {
+                        context.startService(stubServiceIntent);
+                    }
                 } catch (Throwable e) {
                     e.printStackTrace();
                 }
