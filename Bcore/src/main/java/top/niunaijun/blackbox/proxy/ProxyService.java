@@ -1,8 +1,12 @@
 package top.niunaijun.blackbox.proxy;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.os.Build;
 import android.os.IBinder;
 
 import androidx.annotation.Nullable;
@@ -10,7 +14,8 @@ import androidx.core.app.NotificationCompat;
 
 import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.dispatcher.AppServiceDispatcher;
-import top.niunaijun.blackbox.utils.compat.BuildCompat;
+import top.niunaijun.blackbox.proxy.record.ProxyServiceRecord;
+import top.niunaijun.blackbox.utils.Slog;
 
 
 public class ProxyService extends Service {
@@ -24,6 +29,12 @@ public class ProxyService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null) {
+            ProxyServiceRecord record = ProxyServiceRecord.create(intent);
+            if (record.mRequireForeground) {
+                ensureBridgeForeground();
+            }
+        }
         AppServiceDispatcher.get().onStartCommand(intent, flags, startId);
         return START_NOT_STICKY;
     }
@@ -58,12 +69,36 @@ public class ProxyService extends Service {
         return false;
     }
 
-    private void showNotification() {
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(getApplicationContext(), getPackageName() + ".blackbox_proxy")
-                .setPriority(NotificationCompat.PRIORITY_MAX);
-        if (BuildCompat.isOreo()) {
-            startForeground(BlackBoxCore.getHostPkg().hashCode(), builder.build());
+    private void ensureBridgeForeground() {
+        Slog.i(TAG, "CLF9_BISECT_FGS_BRIDGE phase=enter uid=" + BlackBoxCore.getHostUid()
+                + " pkg=" + getPackageName());
+
+        final String channelId = getPackageName() + ".blackbox_proxy";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (manager != null && manager.getNotificationChannel(channelId) == null) {
+                NotificationChannel channel = new NotificationChannel(
+                        channelId,
+                        "CloneApp background services",
+                        NotificationManager.IMPORTANCE_LOW
+                );
+                manager.createNotificationChannel(channel);
+            }
         }
+
+        Notification notification = new NotificationCompat.Builder(getApplicationContext(), channelId)
+                .setSmallIcon(android.R.drawable.stat_notify_more)
+                .setContentTitle("CloneApp")
+                .setContentText("Call service active")
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build();
+
+        int notificationId = (getPackageName() + ":" + getClass().getName()).hashCode();
+        startForeground(notificationId, notification);
+
+        Slog.i(TAG, "CLF9_BISECT_FGS_BRIDGE phase=after_startForeground uid=" + BlackBoxCore.getHostUid()
+                + " pkg=" + getPackageName());
     }
 
     public static class P0 extends ProxyService {
