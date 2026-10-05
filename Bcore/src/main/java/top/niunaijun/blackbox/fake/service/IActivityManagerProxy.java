@@ -757,14 +757,8 @@ public class IActivityManagerProxy extends ClassInvocationStub {
     public static class setServiceForeground extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            
-            
-            for (int i = args.length - 1; i >= 0; i--) {
-                if (args[i] instanceof Integer) {
-                    args[i] = 0; 
-                    break;
-                }
-            }
+            // Preserve Android's foreground-service type. Clearing the final
+            // integer downgrades microphone/camera call services on modern Android.
             return method.invoke(who, args);
         }
     }
