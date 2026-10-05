@@ -47,6 +47,22 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
         
         
         
+        if (AppOpsReturnTypeGuard.isSyncNotedNoteOperation(
+                methodName, method.getReturnType().getName())) {
+            MethodParameterUtils.replaceFirstAppPkg(args);
+            MethodParameterUtils.replaceLastUid(args);
+            try {
+                Object result = method.invoke(getBase(), args);
+                String actualType = result == null ? "null" : result.getClass().getName();
+                Slog.i(TAG, "APP_OPS_SYNC_NOTED_RESULT declaredType="
+                        + method.getReturnType().getName()
+                        + " actualType=" + actualType);
+                return result;
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                throw e.getCause();
+            }
+        }
+
         if (methodName.startsWith("check") || 
             methodName.startsWith("note") || 
             methodName.startsWith("start")) {

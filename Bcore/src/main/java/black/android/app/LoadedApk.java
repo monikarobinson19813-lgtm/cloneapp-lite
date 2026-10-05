@@ -6,7 +6,9 @@ import android.app.Instrumentation;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.IIntentReceiver;
+import android.content.Intent;
 import android.content.ServiceConnection;
+import android.os.Bundle;
 import android.content.pm.ApplicationInfo;
 import android.os.Handler;
 import android.os.IInterface;
@@ -88,10 +90,20 @@ public interface LoadedApk {
         @BMethod
         IInterface getIIntentReceiver();
 
+        @BMethod
+        void performReceive(Intent intent, int resultCode, String data, Bundle extras,
+                            boolean ordered, boolean sticky, boolean assumeDelivered,
+                            int sendingUser, int sendingUid, String sendingPackage);
+
         @BClassName("android.app.LoadedApk$ReceiverDispatcher$InnerReceiver")
         interface InnerReceiver {
             @BField
             WeakReference<?> mDispatcher();
+
+            @BMethod
+            void performReceive(Intent intent, int resultCode, String data, Bundle extras,
+                                boolean ordered, boolean sticky, boolean assumeDelivered,
+                                int sendingUser, int sendingUid, String sendingPackage);
         }
     }
 }

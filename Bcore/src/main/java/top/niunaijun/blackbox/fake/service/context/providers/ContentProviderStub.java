@@ -58,18 +58,11 @@ public class ContentProviderStub extends ClassInvocationStub implements BContent
         } else {
             
             if (args != null && args.length > 0) {
-                for (int i = 0; i < args.length; i++) {
-                    Object arg = args[i];
-                    if (arg instanceof String) {
-                        String strArg = (String) arg;
-                        
-                        if (!isSystemProviderAuthority(strArg)) {
-                            
-                            args[i] = mAppPkg;
-                        }
-                    }
-                }
-                
+                // Pre-AttributionSource IContentProvider methods carried the calling
+                // package as the first argument. Never rewrite every String argument:
+                // later Strings are semantic data such as MIME types, file modes,
+                // selections, sort orders, and method arguments.
+                ContentProviderCallerIdentity.rewriteLegacyCallingPackage(args, mAppPkg);
                 AttributionSourceUtils.fixAttributionSourceInArgs(args);
             }
         }

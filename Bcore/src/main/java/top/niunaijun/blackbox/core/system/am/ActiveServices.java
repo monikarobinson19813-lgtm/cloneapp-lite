@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
 import android.os.Binder;
+import android.os.Build;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.util.Log;
@@ -51,12 +52,17 @@ public class ActiveServices {
         runningServiceRecord.mServiceInfo = serviceInfo;
 
         runningServiceRecord.getAndIncrementStartId();
-        final Intent stubServiceIntent = createStubServiceIntent(intent, serviceInfo, processRecord, runningServiceRecord);
+        final Intent stubServiceIntent = createStubServiceIntent(intent, serviceInfo, processRecord, runningServiceRecord, requireForeground);
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    BlackBoxCore.getContext().startService(stubServiceIntent);
+                    Context context = BlackBoxCore.getContext();
+                    if (ServiceStartPolicy.shouldUseForegroundService(requireForeground, Build.VERSION.SDK_INT)) {
+                        context.startForegroundService(stubServiceIntent);
+                    } else {
+                        context.startService(stubServiceIntent);
+                    }
                 } catch (Throwable e) {
                     e.printStackTrace();
                 }
@@ -141,7 +147,7 @@ public class ActiveServices {
                 runningServiceRecord.mConnectedServiceRecord = connectedService;
             }
         }
-        return createStubServiceIntent(intent, serviceInfo, processRecord, runningServiceRecord);
+        return createStubServiceIntent(intent, serviceInfo, processRecord, runningServiceRecord, false);
     }
 
     public void unbindService(IBinder binder, int userId) {
@@ -194,12 +200,12 @@ public class ActiveServices {
         return record;
     }
 
-    private Intent createStubServiceIntent(Intent targetIntent, ServiceInfo serviceInfo, ProcessRecord processRecord, RunningServiceRecord runningServiceRecord) {
+    private Intent createStubServiceIntent(Intent targetIntent, ServiceInfo serviceInfo, ProcessRecord processRecord, RunningServiceRecord runningServiceRecord, boolean requireForeground) {
         Intent stub = new Intent();
         ComponentName stubComp = new ComponentName(BlackBoxCore.getHostPkg(), ProxyManifest.getProxyService(processRecord.bpid));
         stub.setComponent(stubComp);
         stub.setAction(UUID.randomUUID().toString());
-        ProxyServiceRecord.saveStub(stub, targetIntent, serviceInfo, runningServiceRecord, processRecord.userId, runningServiceRecord.mStartId.get());
+        ProxyServiceRecord.saveStub(stub, targetIntent, serviceInfo, runningServiceRecord, processRecord.userId, runningServiceRecord.mStartId.get(), requireForeground);
         return stub;
     }
 

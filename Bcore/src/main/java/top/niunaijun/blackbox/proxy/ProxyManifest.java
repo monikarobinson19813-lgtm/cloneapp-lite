@@ -44,6 +44,10 @@ public class ProxyManifest {
         return BlackBoxCore.getHostPkg() + ".blackbox.FileProvider";
     }
 
+    public static String getExternalViewProvider() {
+        return BlackBoxCore.getHostPkg() + ".blackbox.ExternalViewProvider";
+    }
+
     public static String getProxyReceiver() {
         return BlackBoxCore.getHostPkg() + ".stub_receiver";
     }

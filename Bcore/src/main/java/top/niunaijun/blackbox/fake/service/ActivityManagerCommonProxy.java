@@ -1,5 +1,6 @@
 package top.niunaijun.blackbox.fake.service;
 
+import android.content.ClipData;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
@@ -78,7 +79,10 @@ public class ActivityManagerCommonProxy {
                     GET_META_DATA,
                     StartActivityCompat.getResolvedType(args),
                     BActivityThread.getUserId());
-            if (resolveInfo == null) {
+            if (!ActivityResolveInfoGuard.isUsable(resolveInfo)) {
+                if (resolveInfo != null) {
+                    Slog.w(TAG, "StartActivity: virtual resolve returned incomplete activityInfo; trying fallback");
+                }
                 String origPackage = intent.getPackage();
                 if (intent.getPackage() == null && intent.getComponent() == null) {
                     intent.setPackage(BActivityThread.getAppPackageName());
@@ -90,8 +94,41 @@ public class ActivityManagerCommonProxy {
                         GET_META_DATA,
                         StartActivityCompat.getResolvedType(args),
                         BActivityThread.getUserId());
-                if (resolveInfo == null) {
+                if (!ActivityResolveInfoGuard.isUsable(resolveInfo)) {
+                    if (resolveInfo != null) {
+                        Slog.w(TAG, "StartActivity: fallback resolve returned incomplete activityInfo; delegating to system");
+                    }
                     intent.setPackage(origPackage);
+
+                    String resolvedType = StartActivityCompat.getResolvedType(args);
+                    if (resolvedType == null) {
+                        resolvedType = intent.getType();
+                    }
+                    Uri sourceUri = intent.getData();
+                    if (ExternalContentBridgePolicy.shouldBridge(
+                            intent.getAction(),
+                            sourceUri == null ? null : sourceUri.getScheme(),
+                            resolvedType)) {
+                        Uri bridgedUri = FileProviderHandler.materializeForExternalView(
+                                BActivityThread.getApplication(),
+                                sourceUri,
+                                resolvedType,
+                                BActivityThread.getUserId());
+                        if (bridgedUri != null) {
+                            intent.setDataAndType(bridgedUri, resolvedType);
+                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            if (intent.getClipData() == null) {
+                                intent.setClipData(ClipData.newRawUri("CloneApp attachment", bridgedUri));
+                            }
+                            Slog.i(TAG, "StartActivity: bridged external PDF content URI from "
+                                    + sourceUri.getAuthority() + " to " + bridgedUri.getAuthority());
+                        } else {
+                            Slog.w(TAG, "StartActivity: unable to bridge external PDF content URI: "
+                                    + sourceUri.getAuthority());
+                        }
+                    }
+                    Slog.i(TAG, "StartActivity: delegating external launch to system action="
+                            + intent.getAction() + " type=" + resolvedType);
                     return method.invoke(who, args);
                 }
             }

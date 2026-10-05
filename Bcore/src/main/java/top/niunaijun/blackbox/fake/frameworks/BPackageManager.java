@@ -573,7 +573,6 @@ public class BPackageManager extends BlackManager<IBPackageManagerService> {
     }
 
     public boolean isInstalled(String packageName, int userId) {
-        
         if (shouldUseFallbackMode()) {
             Log.w(TAG, "Using fallback isInstalled check for " + packageName + " due to service failures");
             return isInstalledFallback(packageName);

@@ -13,20 +13,23 @@ public class ProxyServiceRecord {
     public IBinder mToken;
     public int mUserId;
     public int mStartId;
+    public boolean mRequireForeground;
 
-    public ProxyServiceRecord(Intent serviceIntent, ServiceInfo serviceInfo, IBinder token, int userId, int startId) {
+    public ProxyServiceRecord(Intent serviceIntent, ServiceInfo serviceInfo, IBinder token, int userId, int startId, boolean requireForeground) {
         mServiceIntent = serviceIntent;
         mServiceInfo = serviceInfo;
         mUserId = userId;
         mStartId = startId;
         mToken = token;
+        mRequireForeground = requireForeground;
     }
 
-    public static void saveStub(Intent shadow, Intent target, ServiceInfo serviceInfo, IBinder token, int userId, int startId) {
+    public static void saveStub(Intent shadow, Intent target, ServiceInfo serviceInfo, IBinder token, int userId, int startId, boolean requireForeground) {
         shadow.putExtra("_B_|_target_", target);
         shadow.putExtra("_B_|_service_info_", serviceInfo);
         shadow.putExtra("_B_|_user_id_", userId);
         shadow.putExtra("_B_|_start_id_", startId);
+        shadow.putExtra("_B_|_require_foreground_", requireForeground);
         BundleCompat.putBinder(shadow, "_B_|_token_", token);
     }
 
@@ -35,7 +38,8 @@ public class ProxyServiceRecord {
         ServiceInfo serviceInfo = intent.getParcelableExtra("_B_|_service_info_");
         int userId = intent.getIntExtra("_B_|_user_id_", 0);
         int startId = intent.getIntExtra("_B_|_start_id_", 0);
+        boolean requireForeground = intent.getBooleanExtra("_B_|_require_foreground_", false);
         IBinder token = BundleCompat.getBinder(intent, "_B_|_token_");
-        return new ProxyServiceRecord(target, serviceInfo, token, userId, startId);
+        return new ProxyServiceRecord(target, serviceInfo, token, userId, startId, requireForeground);
     }
 }
