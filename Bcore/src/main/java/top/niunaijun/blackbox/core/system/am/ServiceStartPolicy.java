@@ -1,6 +1,5 @@
 package top.niunaijun.blackbox.core.system.am;
 
-import android.app.Service;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 
@@ -17,8 +16,12 @@ public final class ServiceStartPolicy {
     }
 
     public static int supportedForegroundServiceType(int guestType) {
+        return supportedForegroundServiceType(guestType, Build.VERSION.SDK_INT);
+    }
+
+    static int supportedForegroundServiceType(int guestType, int sdkInt) {
         int supported = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        if (sdkInt >= Build.VERSION_CODES.R) {
             supported |= ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;
         }
         return guestType & supported;
