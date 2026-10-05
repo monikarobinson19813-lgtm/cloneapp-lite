@@ -10,9 +10,10 @@ param(
     [ValidateRange(1, 20)]
     [int]$Runs = 1,
 
-    [string]$Serial = $env:ANDROID_SERIAL,
+    [Parameter(Mandatory = $true)]
+    [string]$Serial,
 
-    [string]$AdbPath = "adb",
+    [string]$AdbPath = ".\adb.exe",
 
     [string]$Package = "com.cloneapp.lite",
 
@@ -38,86 +39,42 @@ function Get-IsoTimestamp {
 
 function Resolve-Adb {
     param([string]$Path)
+
     try {
         return (Get-Command $Path -ErrorAction Stop).Source
-    } catch {
-        throw "adb not found. Pass -AdbPath with the full path to adb.exe. Requested: $Path"
+    }
+    catch {
+        throw "adb not found. Pass -AdbPath with the path to adb.exe. Requested: $Path"
     }
 }
 
 $script:AdbResolved = Resolve-Adb -Path $AdbPath
-$script:SerialResolved = $null
+$script:SerialResolved = $Serial
 $script:EvidencePath = $null
 
-function Invoke-AdbBase {
+if (($script:SerialResolved -notmatch ':\d+$') -and ($script:SerialResolved -notmatch '_adb-tls-connect\._tcp')) {
+    throw "Serial '$script:SerialResolved' does not look like a wireless adb endpoint."
+}
+
+function Invoke-Adb {
     param([string[]]$Arguments)
 
-    $argsList = @()
-    if ($script:SerialResolved) {
-        $argsList += @("-s", $script:SerialResolved)
-    }
-    $argsList += $Arguments
+    $argList = @("-s", $script:SerialResolved)
+    $argList += $Arguments
 
-    $lines = & $script:AdbResolved @argsList 2>&1
+    $lines = & $script:AdbResolved @argList 2>&1
     $exitCode = $LASTEXITCODE
+
     return [pscustomobject]@{
         ExitCode = $exitCode
-        Output   = (($lines | ForEach-Object { "$_" }) -join [Environment]::NewLine)
+        Output = (($lines | ForEach-Object { "$_" }) -join [Environment]::NewLine)
     }
 }
 
-function Get-WirelessSerials {
-    $r = Invoke-AdbBase -Arguments @("devices")
-    if ($r.ExitCode -ne 0) {
-        throw "adb devices failed: $($r.Output)"
-    }
-
-    $serials = @()
-    foreach ($line in ($r.Output -split "\r?\n")) {
-        if ($line -match '^([^\s]+)\s+device(?:\s|$)') {
-            $candidate = $Matches[1]
-            if ($candidate -match ':\d+$' -or $candidate -match '_adb-tls-connect\._tcp') {
-                $serials += $candidate
-            }
-        }
-    }
-    return @($serials)
+$stateCheck = Invoke-Adb -Arguments @("get-state")
+if (($stateCheck.ExitCode -ne 0) -or ($stateCheck.Output.Trim() -ne "device")) {
+    throw "Wireless adb device '$script:SerialResolved' is not ready. adb get-state: $($stateCheck.Output)"
 }
-
-function Resolve-WirelessSerial {
-    param([string]$Requested)
-
-    if ($Requested) {
-        if ($Requested -notmatch ':\d+$' -and $Requested -notmatch '_adb-tls-connect\._tcp') {
-            throw "Serial '$Requested' does not look like a wireless adb endpoint."
-        }
-
-        $available = Get-WirelessSerials
-        if ($available -notcontains $Requested -and $Requested -match ':\d+$') {
-            $connect = Invoke-AdbBase -Arguments @("connect", $Requested)
-            if ($connect.ExitCode -ne 0) {
-                throw "adb connect failed for $Requested : $($connect.Output)"
-            }
-            $available = Get-WirelessSerials
-        }
-
-        if ($available -notcontains $Requested) {
-            throw "Wireless adb device '$Requested' is not connected. Connected wireless devices: $($available -join ', ')"
-        }
-        return $Requested
-    }
-
-    $found = Get-WirelessSerials
-    if ($found.Count -eq 0) {
-        throw "No wireless adb device is connected. Connect the Travel Phone or pass -Serial <host:port>."
-    }
-    if ($found.Count -gt 1) {
-        throw "More than one wireless adb device is connected: $($found -join ', '). Pass -Serial explicitly."
-    }
-    return $found[0]
-}
-
-$script:SerialResolved = Resolve-WirelessSerial -Requested $Serial
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
@@ -128,6 +85,7 @@ function Write-Evidence {
 
 function Write-Section {
     param([string]$Name)
+
     Write-Evidence ""
     Write-Evidence ("=" * 72)
     Write-Evidence $Name
@@ -139,126 +97,218 @@ function Invoke-AdbCapture {
         [string]$Label,
         [string[]]$Arguments
     )
-    $r = Invoke-AdbBase -Arguments $Arguments
+
+    $result = Invoke-Adb -Arguments $Arguments
+
     Write-Evidence "[$(Get-IsoTimestamp)] $Label"
     Write-Evidence "adb -s $script:SerialResolved $($Arguments -join ' ')"
-    Write-Evidence "exit=$($r.ExitCode)"
-    if ($r.Output) {
-        Write-Evidence $r.Output
-    } else {
+    Write-Evidence "exit=$($result.ExitCode)"
+
+    if ([string]::IsNullOrWhiteSpace($result.Output)) {
         Write-Evidence "<no output>"
     }
-    return $r
+    else {
+        Write-Evidence $result.Output
+    }
+
+    return $result
 }
 
 function Get-ProcessSnapshot {
     param([string]$Label)
 
-    $r = Invoke-AdbBase -Arguments @("shell", "ps", "-A")
-    $allLines = @($r.Output -split "\r?\n")
-    $hostPattern = [regex]::Escape($Package)
-    $guestPattern = [regex]::Escape($GuestPackage)
+    $result = Invoke-Adb -Arguments @("shell", "ps", "-A")
+    $allLines = @($result.Output -split '\r?\n')
 
-    $packageDump = Invoke-AdbBase -Arguments @("shell", "dumpsys", "package", $Package)
+    $packageRegex = [regex]::Escape($Package)
+    $guestRegex = [regex]::Escape($GuestPackage)
+
+    $hostProcesses = @(
+        $allLines | Where-Object {
+            $_ -match ('\s' + $packageRegex + '(?::[^\s]+)?\s*$')
+        }
+    )
+
     $hostLinuxUser = $null
-    $hostAppId = $null
-    if ($packageDump.ExitCode -eq 0 -and $packageDump.Output -match '(?m)^\s*userId=(\d+)\s*
+    if ($hostProcesses.Count -gt 0) {
+        $parts = @($hostProcesses[0].Trim() -split '\s+')
+        if ($parts.Count -gt 0) {
+            $hostLinuxUser = $parts[0]
+        }
+    }
+
+    $guestProxyProcesses = @(
+        $allLines | Where-Object {
+            $_ -match ('\s' + $packageRegex + ':p\d+\s*$')
+        }
+    )
+
+    $allWhatsappProcesses = @(
+        $allLines | Where-Object {
+            $_ -match ('\s' + $guestRegex + '(?::[^\s]+)?\s*$')
+        }
+    )
+
+    $virtualGuestByHostUid = @()
+    $whatsappOtherUid = @()
+
+    foreach ($line in $allWhatsappProcesses) {
+        $parts = @($line.Trim() -split '\s+')
+        $linuxUser = $null
+        if ($parts.Count -gt 0) {
+            $linuxUser = $parts[0]
+        }
+
+        if (($null -ne $hostLinuxUser) -and ($linuxUser -eq $hostLinuxUser)) {
+            $virtualGuestByHostUid += $line
+        }
+        else {
+            $whatsappOtherUid += $line
+        }
+    }
+
+    $matched = @()
+    $matched += $hostProcesses
+    foreach ($line in $allWhatsappProcesses) {
+        if ($matched -notcontains $line) {
+            $matched += $line
+        }
+    }
+
+    Write-Section $Label
+    Write-Evidence "timestamp=$(Get-IsoTimestamp)"
+    Write-Evidence "adb_exit=$($result.ExitCode)"
+    Write-Evidence "cloneapp_linux_user=$hostLinuxUser"
+    Write-Evidence "cloneapp_process_count=$($hostProcesses.Count)"
+    Write-Evidence "guest_px_process_count=$($guestProxyProcesses.Count)"
+    Write-Evidence "virtual_guest_host_uid_process_count=$($virtualGuestByHostUid.Count)"
+    Write-Evidence "whatsapp_other_uid_process_count=$($whatsappOtherUid.Count)"
+
+    if ($matched.Count -gt 0) {
+        Write-Evidence ($matched -join [Environment]::NewLine)
+    }
+    else {
+        Write-Evidence "<no matching CloneApp/WhatsApp processes>"
+    }
+
+    return [pscustomobject]@{
+        ExitCode = $result.ExitCode
+        HostCount = $hostProcesses.Count
+        GuestPxCount = $guestProxyProcesses.Count
+        VirtualGuestCount = $virtualGuestByHostUid.Count
+        WhatsappOtherUidCount = $whatsappOtherUid.Count
+        HostLinuxUser = $hostLinuxUser
+    }
+}
 
 function Get-NotificationSnapshot {
     param([string]$Label)
 
-    $r = Invoke-AdbBase -Arguments @("shell", "dumpsys", "notification", "--noredact")
-    $lines = @($r.Output -split "\r?\n")
-    $recordIndexes = @()
-
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        if ($lines[$i] -match "NotificationRecord\(" -and $lines[$i] -match "pkg=$([regex]::Escape($Package))") {
-            $recordIndexes += $i
-        }
-    }
+    $result = Invoke-Adb -Arguments @("shell", "dumpsys", "notification", "--noredact")
+    $lines = @($result.Output -split '\r?\n')
+    $packageText = "pkg=$Package"
 
     $records = @()
-    foreach ($idx in $recordIndexes) {
-        $end = [Math]::Min($lines.Count - 1, $idx + 45)
-        $block = @($lines[$idx..$end])
-        $blockText = $block -join [Environment]::NewLine
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if (($lines[$i] -notlike "*NotificationRecord(*") -or ($lines[$i] -notlike "*$packageText*")) {
+            continue
+        }
+
+        $end = [Math]::Min($lines.Count - 1, $i + 60)
+        $blockLines = @($lines[$i..$end])
+        $blockText = $blockLines -join [Environment]::NewLine
 
         $user = "<absent>"
         $channel = "<absent>"
         $subText = "<absent>"
-        $when = 0L
+        [Int64]$whenValue = 0
 
-        if ($blockText -match 'user=UserHandle\{([^}]+)\}') {
-            $user = $Matches[1]
+        $mUser = [regex]::Match($blockText, 'user=UserHandle\{([^}]+)\}')
+        if ($mUser.Success) {
+            $user = $mUser.Groups[1].Value
         }
-        if ($blockText -match 'Notification\(channel=([^\s\)]+)') {
-            $channel = $Matches[1]
+
+        $mChannel = [regex]::Match($blockText, 'Notification\(channel=([^\s\)]+)')
+        if ($mChannel.Success) {
+            $channel = $mChannel.Groups[1].Value
         }
-        if ($blockText -match '(?im)^\s*(?:android\.)?subText\s*=\s*(.+)$') {
-            $subText = $Matches[1].Trim()
-        } elseif ($blockText -match '(?i)subText=([^\r\n\)]+)') {
-            $subText = $Matches[1].Trim()
+
+        $mSub = [regex]::Match($blockText, '(?im)^\s*(?:android\.)?subText\s*=\s*(.+)$')
+        if (-not $mSub.Success) {
+            $mSub = [regex]::Match($blockText, '(?i)subText=([^\r\n\)]+)')
         }
-        if ($blockText -match '(?m)^\s*when=(\d+)') {
-            [void][Int64]::TryParse($Matches[1], [ref]$when)
+        if ($mSub.Success) {
+            $subText = $mSub.Groups[1].Value.Trim()
+        }
+
+        $mWhen = [regex]::Match($blockText, '(?m)^\s*when=(\d+)')
+        if ($mWhen.Success) {
+            [void][Int64]::TryParse($mWhen.Groups[1].Value, [ref]$whenValue)
         }
 
         $records += [pscustomobject]@{
-            User      = $user
-            Channel   = $channel
-            SubText   = $subText
-            When      = $when
-            BlockText = $blockText
+            User = $user
+            Channel = $channel
+            SubText = $subText
+            When = $whenValue
+            Block = $blockText
         }
     }
 
     Write-Section $Label
     Write-Evidence "timestamp=$(Get-IsoTimestamp)"
     Write-Evidence "notification_record_count=$($records.Count)"
+
     if ($records.Count -eq 0) {
         Write-Evidence "<no NotificationRecord for pkg=$Package>"
-    } else {
-        $n = 0
-        foreach ($rec in $records) {
-            $n++
-            Write-Evidence "record[$n].pkg=$Package"
-            Write-Evidence "record[$n].user=$($rec.User)"
-            Write-Evidence "record[$n].subText=$($rec.SubText)"
-            Write-Evidence "record[$n].channel=$($rec.Channel)"
-            Write-Evidence "record[$n].when=$($rec.When)"
-            Write-Evidence $rec.BlockText
+    }
+    else {
+        $recordNumber = 0
+        foreach ($record in $records) {
+            $recordNumber++
+            Write-Evidence "record[$recordNumber].pkg=$Package"
+            Write-Evidence "record[$recordNumber].user=$($record.User)"
+            Write-Evidence "record[$recordNumber].subText=$($record.SubText)"
+            Write-Evidence "record[$recordNumber].channel=$($record.Channel)"
+            Write-Evidence "record[$recordNumber].when=$($record.When)"
+            Write-Evidence $record.Block
             Write-Evidence "---"
         }
     }
 
-    $maxWhen = 0L
-    if ($records.Count -gt 0) {
-        $maxWhen = ($records | Measure-Object -Property When -Maximum).Maximum
+    [Int64]$maxWhen = 0
+    foreach ($record in $records) {
+        if ($record.When -gt $maxWhen) {
+            $maxWhen = $record.When
+        }
     }
 
     return [pscustomobject]@{
-        Count   = $records.Count
-        MaxWhen = [Int64]$maxWhen
-        Records = $records
+        Count = $records.Count
+        MaxWhen = $maxWhen
     }
 }
 
 function Get-IdleState {
     param([string]$Label)
 
-    $r = Invoke-AdbBase -Arguments @("shell", "dumpsys", "deviceidle", "get", "deep")
-    $state = $r.Output.Trim()
-    Write-Evidence "[$(Get-IsoTimestamp)] $Label deep_idle=$state exit=$($r.ExitCode)"
+    $result = Invoke-Adb -Arguments @("shell", "dumpsys", "deviceidle", "get", "deep")
+    $state = $result.Output.Trim()
+
+    Write-Evidence "[$(Get-IsoTimestamp)] $Label deep_idle=$state exit=$($result.ExitCode)"
+
     return [pscustomobject]@{
-        ExitCode = $r.ExitCode
-        State    = $state
+        ExitCode = $result.ExitCode
+        State = $state
     }
 }
 
 function Get-FailureScan {
     Write-Section "FAILURE WINDOW SCAN"
 
-    $r = Invoke-AdbBase -Arguments @("logcat", "-d", "-v", "time")
+    $result = Invoke-Adb -Arguments @("logcat", "-d", "-v", "time")
+
     $patterns = @(
         "ANR in com.cloneapp.lite",
         "Timeout receiver",
@@ -269,7 +319,8 @@ function Get-FailureScan {
     )
 
     $hits = @()
-    foreach ($line in ($r.Output -split "\r?\n")) {
+
+    foreach ($line in ($result.Output -split '\r?\n')) {
         foreach ($pattern in $patterns) {
             if ($line -like "*$pattern*") {
                 $hits += $line
@@ -280,21 +331,25 @@ function Get-FailureScan {
 
     Write-Evidence "timestamp=$(Get-IsoTimestamp)"
     Write-Evidence "patterns=$($patterns -join ' | ')"
+
     if ($hits.Count -gt 0) {
         Write-Evidence ($hits -join [Environment]::NewLine)
-    } else {
+    }
+    else {
         Write-Evidence "<no matches>"
     }
 
-    return @($hits)
+    return $hits
 }
 
 function Read-SoundEvidence {
     while ($true) {
         $answer = (Read-Host "Did you hear the User$VirtualUser notification sound while the phone stayed locked? [Y/N/U=unknown]").Trim().ToUpperInvariant()
-        if ($answer -in @("Y", "N", "U")) {
+
+        if (($answer -eq "Y") -or ($answer -eq "N") -or ($answer -eq "U")) {
             return $answer
         }
+
         Write-Host "Please enter Y, N, or U."
     }
 }
@@ -319,11 +374,11 @@ function Invoke-GateRun {
     param([int]$RunNumber)
 
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $safeBuild = ($BuildLabel -replace '[^A-Za-z0-9._-]', '_')
+    $safeBuild = $BuildLabel -replace '[^A-Za-z0-9._-]', '_'
     $script:EvidencePath = Join-Path $OutputDir ("locked-notification-{0}-{1}-run{2:D2}-{3}.txt" -f $safeBuild, $Mode, $RunNumber, $stamp)
 
     Write-Evidence "CloneApp Lite locked-notification gate"
-    Write-Evidence "schema=1"
+    Write-Evidence "schema=2"
     Write-Evidence "started=$(Get-IsoTimestamp)"
     Write-Evidence "build_label=$BuildLabel"
     Write-Evidence "mode=$Mode"
@@ -343,10 +398,14 @@ function Invoke-GateRun {
 
     Write-Section "DAEMON PREF"
     $daemon = Invoke-AdbCapture -Label "mDaemonEnable" -Arguments @(
-        "shell", "run-as", $Package, "cat", "shared_prefs/AppSharedPreferenceDelegate.xml"
+        "shell",
+        "run-as",
+        $Package,
+        "cat",
+        "shared_prefs/AppSharedPreferenceDelegate.xml"
     )
 
-    if ($daemon.ExitCode -ne 0 -or $daemon.Output -notmatch '<boolean\s+name="mDaemonEnable"\s+value="false"\s*/>') {
+    if (($daemon.ExitCode -ne 0) -or ($daemon.Output -notmatch '<boolean\s+name="mDaemonEnable"\s+value="false"\s*/>')) {
         return (Finish-Run -Status "INCONCLUSIVE" -Reason "mDaemonEnable=false was not verified")
     }
 
@@ -354,7 +413,8 @@ function Invoke-GateRun {
         Write-Host "COLD setup: force-stopping $Package. Do NOT open CloneApp or WhatsApp."
         Invoke-AdbCapture -Label "force-stop CloneApp" -Arguments @("shell", "am", "force-stop", $Package) | Out-Null
         Start-Sleep -Seconds 2
-    } else {
+    }
+    else {
         [void](Read-Host "WARM setup: unlock the Travel Phone, open CloneApp > User$VirtualUser WhatsApp once, return to Home, then press Enter here")
     }
 
@@ -364,15 +424,22 @@ function Invoke-GateRun {
         return (Finish-Run -Status "INCONCLUSIVE" -Reason "could not capture pre-lock process state")
     }
 
-    if ($Mode -eq "COLD" -and $before.HostCount -ne 0) {
+    if (($Mode -eq "COLD") -and ($before.HostCount -ne 0)) {
         return (Finish-Run -Status "INCONCLUSIVE" -Reason "COLD setup failed: CloneApp process still present after force-stop")
     }
 
-    if ($Mode -eq "WARM" -and ($before.HostCount -eq 0 -or (($before.GuestPxCount -eq 0) -and ($before.VirtualGuestCount -eq 0)))) {
-        return (Finish-Run -Status "INCONCLUSIVE" -Reason "WARM setup not verified: CloneApp present but neither proxy pX nor host-UID virtual WhatsApp process was found")
+    if ($Mode -eq "WARM") {
+        $warmGuestCount = $before.GuestPxCount + $before.VirtualGuestCount
+
+        if (($before.HostCount -eq 0) -or ($warmGuestCount -eq 0)) {
+            return (Finish-Run -Status "INCONCLUSIVE" -Reason "WARM setup not verified: CloneApp or virtual guest process missing before lock")
+        }
     }
 
     $preNotif = Get-NotificationSnapshot -Label "NOTIFICATION STATE BEFORE LOCK"
+
+    Write-Section "LOG WINDOW"
+    Invoke-AdbCapture -Label "clear logcat before lock" -Arguments @("logcat", "-c") | Out-Null
 
     Write-Section "LOCK + DEEP IDLE"
     Write-Evidence "[$(Get-IsoTimestamp)] sending KEYCODE_SLEEP"
@@ -381,9 +448,9 @@ function Invoke-GateRun {
 
     Write-Evidence "[$(Get-IsoTimestamp)] force-idle begin"
     $forceIdle = Invoke-AdbCapture -Label "deviceidle force-idle" -Arguments @("shell", "dumpsys", "deviceidle", "force-idle")
-    $idle1 = Get-IdleState -Label "after force-idle"
+    $idleAfterForce = Get-IdleState -Label "after force-idle"
 
-    if ($forceIdle.ExitCode -ne 0 -or $idle1.ExitCode -ne 0 -or $idle1.State -ne "IDLE") {
+    if (($forceIdle.ExitCode -ne 0) -or ($idleAfterForce.ExitCode -ne 0) -or ($idleAfterForce.State -ne "IDLE")) {
         return (Finish-Run -Status "INCONCLUSIVE" -Reason "deep IDLE was not confirmed immediately after force-idle")
     }
 
@@ -396,22 +463,28 @@ function Invoke-GateRun {
     }
 
     Write-Evidence "[$(Get-IsoTimestamp)] wait_complete"
-    $idle2 = Get-IdleState -Label "after wait / before message"
+    $idleBeforeMessage = Get-IdleState -Label "after wait / before message"
 
-    if ($idle2.ExitCode -ne 0 -or $idle2.State -ne "IDLE") {
+    if (($idleBeforeMessage.ExitCode -ne 0) -or ($idleBeforeMessage.State -ne "IDLE")) {
         return (Finish-Run -Status "INCONCLUSIVE" -Reason "device was not in deep IDLE at the end of the wait")
     }
 
     [void](Read-Host "WAIT COMPLETE. Send ONE normal WhatsApp text to User$VirtualUser now from the other phone. Press Enter here immediately after sending")
     Write-Evidence "[$(Get-IsoTimestamp)] operator reports message sent"
+
     Write-Host "Keeping the Travel Phone locked for $PostSendWaitSeconds seconds..."
     Start-Sleep -Seconds $PostSendWaitSeconds
 
     $sound = Read-SoundEvidence
-    $soundText = switch ($sound) {
-        "Y" { "YES" }
-        "N" { "NO" }
-        default { "UNKNOWN" }
+
+    if ($sound -eq "Y") {
+        $soundText = "YES"
+    }
+    elseif ($sound -eq "N") {
+        $soundText = "NO"
+    }
+    else {
+        $soundText = "UNKNOWN"
     }
 
     Write-Section "OPERATOR SOUND EVIDENCE"
@@ -420,14 +493,16 @@ function Invoke-GateRun {
 
     $postNotif = Get-NotificationSnapshot -Label "NOTIFICATION STATE AFTER MESSAGE"
     $after = Get-ProcessSnapshot -Label "PROCESS STATE AFTER MESSAGE"
-    $idle3 = Get-IdleState -Label "after message"
-    $failureHits = Get-FailureScan
+    $idleAfterMessage = Get-IdleState -Label "after message"
+    $failureHits = @(Get-FailureScan)
 
     $freshRecord = $false
+
     if ($postNotif.Count -gt 0) {
         if ($preNotif.Count -eq 0) {
             $freshRecord = $true
-        } elseif ($postNotif.MaxWhen -gt $preNotif.MaxWhen) {
+        }
+        elseif ($postNotif.MaxWhen -gt $preNotif.MaxWhen) {
             $freshRecord = $true
         }
     }
@@ -447,20 +522,20 @@ function Invoke-GateRun {
     Write-Evidence "post_guest_px_process_count=$($after.GuestPxCount)"
     Write-Evidence "post_virtual_guest_host_uid_process_count=$($after.VirtualGuestCount)"
     Write-Evidence "post_whatsapp_other_uid_process_count=$($after.WhatsappOtherUidCount)"
-    Write-Evidence "idle_after_force=$($idle1.State)"
-    Write-Evidence "idle_before_message=$($idle2.State)"
-    Write-Evidence "idle_after_message=$($idle3.State)"
+    Write-Evidence "idle_after_force=$($idleAfterForce.State)"
+    Write-Evidence "idle_before_message=$($idleBeforeMessage.State)"
+    Write-Evidence "idle_after_message=$($idleAfterMessage.State)"
     Write-Evidence "failure_scan_hit_count=$($failureHits.Count)"
 
-    if ($sound -eq "Y" -and $freshRecord) {
+    if (($sound -eq "Y") -and $freshRecord) {
         return (Finish-Run -Status "PASS" -Reason "sound heard and fresh/updated CloneApp NotificationRecord captured")
     }
 
-    if ($sound -eq "N" -and -not $freshRecord -and $postNotif.Count -eq 0) {
+    if (($sound -eq "N") -and (-not $freshRecord) -and ($postNotif.Count -eq 0)) {
         return (Finish-Run -Status "FAIL" -Reason "no sound and no CloneApp NotificationRecord after message")
     }
 
-    return (Finish-Run -Status "INCONCLUSIVE" -Reason "sound/NotificationRecord evidence did not agree cleanly")
+    return (Finish-Run -Status "INCONCLUSIVE" -Reason "sound and NotificationRecord evidence did not agree cleanly")
 }
 
 $allSummaries = @()
@@ -468,7 +543,9 @@ $allSummaries = @()
 for ($run = 1; $run -le $Runs; $run++) {
     Write-Host ""
     Write-Host ("===== CloneApp Lite locked-notification gate: run {0}/{1} =====" -f $run, $Runs)
-    $allSummaries += Invoke-GateRun -RunNumber $run
+
+    $summary = Invoke-GateRun -RunNumber $run
+    $allSummaries += $summary
 
     if ($run -lt $Runs) {
         [void](Read-Host "Run $run complete. Press Enter when ready to set up the next run")
@@ -477,384 +554,7 @@ for ($run = 1; $run -le $Runs; $run++) {
 
 Write-Host ""
 Write-Host "===== Completed $Runs run(s) ====="
-foreach ($summary in $allSummaries) {
-    Write-Host $summary
-}
-) {
-        $hostAppId = [int]$Matches[1]
-        if ($hostAppId -ge 10000 -and $hostAppId -lt 20000) {
-            $hostLinuxUser = "u0_a$($hostAppId - 10000)"
-        }
-    }
 
-    $matched = @($allLines | Where-Object {
-        $_ -match $hostPattern -or $_ -match $guestPattern
-    })
-
-    $hostProcesses = @($matched | Where-Object {
-        $_ -match "(^|\s)$hostPattern(?:$|:)"
-    })
-
-    # Some runs expose a proxy process as com.cloneapp.lite:pN.
-    $guestPx = @($matched | Where-Object {
-        $_ -match "${hostPattern}:p\d+\b"
-    })
-
-    # On this NE2211, a warmed virtual WhatsApp can instead appear as process
-    # name com.whatsapp under CloneApp's Linux UID. The physical WhatsApp uses
-    # a different Linux UID, so keep both views and do not conflate them.
-    $allWhatsapp = @($matched | Where-Object {
-        $_ -match "(^|\s)$guestPattern(?:$|:)"
-    })
-
-    $virtualGuestByHostUid = @()
-    $physicalWhatsappOtherUid = @()
-    if ($hostLinuxUser) {
-        $virtualGuestByHostUid = @($allWhatsapp | Where-Object {
-            $_ -match "^\s*$([regex]::Escape($hostLinuxUser))\s+"
-        })
-        $physicalWhatsappOtherUid = @($allWhatsapp | Where-Object {
-            $_ -notmatch "^\s*$([regex]::Escape($hostLinuxUser))\s+"
-        })
-    } else {
-        $physicalWhatsappOtherUid = @($allWhatsapp)
-    }
-
-    Write-Section $Label
-    Write-Evidence "timestamp=$(Get-IsoTimestamp)"
-    Write-Evidence "adb_exit=$($r.ExitCode)"
-    Write-Evidence "cloneapp_userId=$hostAppId"
-    Write-Evidence "cloneapp_linux_user=$hostLinuxUser"
-    Write-Evidence "cloneapp_process_count=$($hostProcesses.Count)"
-    Write-Evidence "guest_px_process_count=$($guestPx.Count)"
-    Write-Evidence "virtual_guest_host_uid_process_count=$($virtualGuestByHostUid.Count)"
-    Write-Evidence "whatsapp_other_uid_process_count=$($physicalWhatsappOtherUid.Count)"
-    if ($matched.Count -gt 0) {
-        Write-Evidence ($matched -join [Environment]::NewLine)
-    } else {
-        Write-Evidence "<no matching processes>"
-    }
-
-    return [pscustomobject]@{
-        ExitCode              = $r.ExitCode
-        HostCount             = $hostProcesses.Count
-        GuestPxCount          = $guestPx.Count
-        VirtualGuestCount     = $virtualGuestByHostUid.Count
-        WhatsappOtherUidCount = $physicalWhatsappOtherUid.Count
-        HostLinuxUser         = $hostLinuxUser
-        MatchedLines          = $matched
-    }
-}
-
-function Get-NotificationSnapshot {
-    param([string]$Label)
-
-    $r = Invoke-AdbBase -Arguments @("shell", "dumpsys", "notification", "--noredact")
-    $lines = @($r.Output -split "\r?\n")
-    $recordIndexes = @()
-
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        if ($lines[$i] -match "NotificationRecord\(" -and $lines[$i] -match "pkg=$([regex]::Escape($Package))") {
-            $recordIndexes += $i
-        }
-    }
-
-    $records = @()
-    foreach ($idx in $recordIndexes) {
-        $end = [Math]::Min($lines.Count - 1, $idx + 45)
-        $block = @($lines[$idx..$end])
-        $blockText = $block -join [Environment]::NewLine
-
-        $user = "<absent>"
-        $channel = "<absent>"
-        $subText = "<absent>"
-        $when = 0L
-
-        if ($blockText -match 'user=UserHandle\{([^}]+)\}') {
-            $user = $Matches[1]
-        }
-        if ($blockText -match 'Notification\(channel=([^\s\)]+)') {
-            $channel = $Matches[1]
-        }
-        if ($blockText -match '(?im)^\s*(?:android\.)?subText\s*=\s*(.+)$') {
-            $subText = $Matches[1].Trim()
-        } elseif ($blockText -match '(?i)subText=([^\r\n\)]+)') {
-            $subText = $Matches[1].Trim()
-        }
-        if ($blockText -match '(?m)^\s*when=(\d+)') {
-            [void][Int64]::TryParse($Matches[1], [ref]$when)
-        }
-
-        $records += [pscustomobject]@{
-            User      = $user
-            Channel   = $channel
-            SubText   = $subText
-            When      = $when
-            BlockText = $blockText
-        }
-    }
-
-    Write-Section $Label
-    Write-Evidence "timestamp=$(Get-IsoTimestamp)"
-    Write-Evidence "notification_record_count=$($records.Count)"
-    if ($records.Count -eq 0) {
-        Write-Evidence "<no NotificationRecord for pkg=$Package>"
-    } else {
-        $n = 0
-        foreach ($rec in $records) {
-            $n++
-            Write-Evidence "record[$n].pkg=$Package"
-            Write-Evidence "record[$n].user=$($rec.User)"
-            Write-Evidence "record[$n].subText=$($rec.SubText)"
-            Write-Evidence "record[$n].channel=$($rec.Channel)"
-            Write-Evidence "record[$n].when=$($rec.When)"
-            Write-Evidence $rec.BlockText
-            Write-Evidence "---"
-        }
-    }
-
-    $maxWhen = 0L
-    if ($records.Count -gt 0) {
-        $maxWhen = ($records | Measure-Object -Property When -Maximum).Maximum
-    }
-
-    return [pscustomobject]@{
-        Count   = $records.Count
-        MaxWhen = [Int64]$maxWhen
-        Records = $records
-    }
-}
-
-function Get-IdleState {
-    param([string]$Label)
-
-    $r = Invoke-AdbBase -Arguments @("shell", "dumpsys", "deviceidle", "get", "deep")
-    $state = $r.Output.Trim()
-    Write-Evidence "[$(Get-IsoTimestamp)] $Label deep_idle=$state exit=$($r.ExitCode)"
-    return [pscustomobject]@{
-        ExitCode = $r.ExitCode
-        State    = $state
-    }
-}
-
-function Get-FailureScan {
-    Write-Section "FAILURE WINDOW SCAN"
-
-    $r = Invoke-AdbBase -Arguments @("logcat", "-d", "-v", "time")
-    $patterns = @(
-        "ANR in com.cloneapp.lite",
-        "Timeout receiver",
-        "App Died",
-        "SecurityException",
-        "ForegroundServiceStartNotAllowed",
-        "MissingForegroundServiceType"
-    )
-
-    $hits = @()
-    foreach ($line in ($r.Output -split "\r?\n")) {
-        foreach ($pattern in $patterns) {
-            if ($line -like "*$pattern*") {
-                $hits += $line
-                break
-            }
-        }
-    }
-
-    Write-Evidence "timestamp=$(Get-IsoTimestamp)"
-    Write-Evidence "patterns=$($patterns -join ' | ')"
-    if ($hits.Count -gt 0) {
-        Write-Evidence ($hits -join [Environment]::NewLine)
-    } else {
-        Write-Evidence "<no matches>"
-    }
-
-    return @($hits)
-}
-
-function Read-SoundEvidence {
-    while ($true) {
-        $answer = (Read-Host "Did you hear the User$VirtualUser notification sound while the phone stayed locked? [Y/N/U=unknown]").Trim().ToUpperInvariant()
-        if ($answer -in @("Y", "N", "U")) {
-            return $answer
-        }
-        Write-Host "Please enter Y, N, or U."
-    }
-}
-
-function Finish-Run {
-    param(
-        [string]$Status,
-        [string]$Reason
-    )
-
-    Write-Section "RUN SUMMARY"
-    Write-Evidence "status=$Status"
-    Write-Evidence "reason=$Reason"
-    Write-Evidence "evidence_file=$script:EvidencePath"
-
-    $line = "$Status | $Reason | evidence=$script:EvidencePath"
-    Write-Host $line
-    return $line
-}
-
-function Invoke-GateRun {
-    param([int]$RunNumber)
-
-    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $safeBuild = ($BuildLabel -replace '[^A-Za-z0-9._-]', '_')
-    $script:EvidencePath = Join-Path $OutputDir ("locked-notification-{0}-{1}-run{2:D2}-{3}.txt" -f $safeBuild, $Mode, $RunNumber, $stamp)
-
-    Write-Evidence "CloneApp Lite locked-notification gate"
-    Write-Evidence "schema=1"
-    Write-Evidence "started=$(Get-IsoTimestamp)"
-    Write-Evidence "build_label=$BuildLabel"
-    Write-Evidence "mode=$Mode"
-    Write-Evidence "run=$RunNumber/$Runs"
-    Write-Evidence "wait_minutes=$WaitMinutes"
-    Write-Evidence "post_send_wait_seconds=$PostSendWaitSeconds"
-    Write-Evidence "wireless_serial=$script:SerialResolved"
-    Write-Evidence "host_package=$Package"
-    Write-Evidence "guest_package=$GuestPackage"
-    Write-Evidence "virtual_user=$VirtualUser"
-
-    Write-Section "DEVICE"
-    Invoke-AdbCapture -Label "device state" -Arguments @("get-state") | Out-Null
-    Invoke-AdbCapture -Label "device model" -Arguments @("shell", "getprop", "ro.product.model") | Out-Null
-    Invoke-AdbCapture -Label "android release" -Arguments @("shell", "getprop", "ro.build.version.release") | Out-Null
-    Invoke-AdbCapture -Label "android sdk" -Arguments @("shell", "getprop", "ro.build.version.sdk") | Out-Null
-
-    Write-Section "DAEMON PREF"
-    $daemon = Invoke-AdbCapture -Label "mDaemonEnable" -Arguments @(
-        "shell", "run-as", $Package, "cat", "shared_prefs/AppSharedPreferenceDelegate.xml"
-    )
-
-    if ($daemon.ExitCode -ne 0 -or $daemon.Output -notmatch '<boolean\s+name="mDaemonEnable"\s+value="false"\s*/>') {
-        return (Finish-Run -Status "INCONCLUSIVE" -Reason "mDaemonEnable=false was not verified")
-    }
-
-    if ($Mode -eq "COLD") {
-        Write-Host "COLD setup: force-stopping $Package. Do NOT open CloneApp or WhatsApp."
-        Invoke-AdbCapture -Label "force-stop CloneApp" -Arguments @("shell", "am", "force-stop", $Package) | Out-Null
-        Start-Sleep -Seconds 2
-    } else {
-        [void](Read-Host "WARM setup: unlock the Travel Phone, open CloneApp > User$VirtualUser WhatsApp once, return to Home, then press Enter here")
-    }
-
-    $before = Get-ProcessSnapshot -Label "PROCESS STATE BEFORE LOCK"
-
-    if ($before.ExitCode -ne 0) {
-        return (Finish-Run -Status "INCONCLUSIVE" -Reason "could not capture pre-lock process state")
-    }
-
-    if ($Mode -eq "COLD" -and $before.HostCount -ne 0) {
-        return (Finish-Run -Status "INCONCLUSIVE" -Reason "COLD setup failed: CloneApp process still present after force-stop")
-    }
-
-    if ($Mode -eq "WARM" -and ($before.HostCount -eq 0 -or $before.GuestPxCount -eq 0)) {
-        return (Finish-Run -Status "INCONCLUSIVE" -Reason "WARM setup not verified: CloneApp/guest pX process missing before lock")
-    }
-
-    $preNotif = Get-NotificationSnapshot -Label "NOTIFICATION STATE BEFORE LOCK"
-
-    Write-Section "LOCK + DEEP IDLE"
-    Write-Evidence "[$(Get-IsoTimestamp)] sending KEYCODE_SLEEP"
-    Invoke-AdbCapture -Label "lock phone" -Arguments @("shell", "input", "keyevent", "223") | Out-Null
-    Start-Sleep -Seconds 1
-
-    Write-Evidence "[$(Get-IsoTimestamp)] force-idle begin"
-    $forceIdle = Invoke-AdbCapture -Label "deviceidle force-idle" -Arguments @("shell", "dumpsys", "deviceidle", "force-idle")
-    $idle1 = Get-IdleState -Label "after force-idle"
-
-    if ($forceIdle.ExitCode -ne 0 -or $idle1.ExitCode -ne 0 -or $idle1.State -ne "IDLE") {
-        return (Finish-Run -Status "INCONCLUSIVE" -Reason "deep IDLE was not confirmed immediately after force-idle")
-    }
-
-    Write-Evidence "[$(Get-IsoTimestamp)] wait_start minutes=$WaitMinutes"
-    Write-Host "Deep IDLE confirmed. Waiting $WaitMinutes minute(s) with the phone locked..."
-
-    for ($minute = 1; $minute -le $WaitMinutes; $minute++) {
-        Start-Sleep -Seconds 60
-        Write-Host ("  waited {0}/{1} minute(s)" -f $minute, $WaitMinutes)
-    }
-
-    Write-Evidence "[$(Get-IsoTimestamp)] wait_complete"
-    $idle2 = Get-IdleState -Label "after wait / before message"
-
-    if ($idle2.ExitCode -ne 0 -or $idle2.State -ne "IDLE") {
-        return (Finish-Run -Status "INCONCLUSIVE" -Reason "device was not in deep IDLE at the end of the wait")
-    }
-
-    [void](Read-Host "WAIT COMPLETE. Send ONE normal WhatsApp text to User$VirtualUser now from the other phone. Press Enter here immediately after sending")
-    Write-Evidence "[$(Get-IsoTimestamp)] operator reports message sent"
-    Write-Host "Keeping the Travel Phone locked for $PostSendWaitSeconds seconds..."
-    Start-Sleep -Seconds $PostSendWaitSeconds
-
-    $sound = Read-SoundEvidence
-    $soundText = switch ($sound) {
-        "Y" { "YES" }
-        "N" { "NO" }
-        default { "UNKNOWN" }
-    }
-
-    Write-Section "OPERATOR SOUND EVIDENCE"
-    Write-Evidence "timestamp=$(Get-IsoTimestamp)"
-    Write-Evidence "notification_sound=$soundText"
-
-    $postNotif = Get-NotificationSnapshot -Label "NOTIFICATION STATE AFTER MESSAGE"
-    $after = Get-ProcessSnapshot -Label "PROCESS STATE AFTER MESSAGE"
-    $idle3 = Get-IdleState -Label "after message"
-    $failureHits = Get-FailureScan
-
-    $freshRecord = $false
-    if ($postNotif.Count -gt 0) {
-        if ($preNotif.Count -eq 0) {
-            $freshRecord = $true
-        } elseif ($postNotif.MaxWhen -gt $preNotif.MaxWhen) {
-            $freshRecord = $true
-        }
-    }
-
-    Write-Section "EVALUATION INPUTS"
-    Write-Evidence "notification_sound=$soundText"
-    Write-Evidence "pre_notification_record_count=$($preNotif.Count)"
-    Write-Evidence "post_notification_record_count=$($postNotif.Count)"
-    Write-Evidence "pre_notification_max_when=$($preNotif.MaxWhen)"
-    Write-Evidence "post_notification_max_when=$($postNotif.MaxWhen)"
-    Write-Evidence "fresh_or_updated_notification_record=$freshRecord"
-    Write-Evidence "pre_cloneapp_process_count=$($before.HostCount)"
-    Write-Evidence "pre_guest_px_process_count=$($before.GuestPxCount)"
-    Write-Evidence "post_cloneapp_process_count=$($after.HostCount)"
-    Write-Evidence "post_guest_px_process_count=$($after.GuestPxCount)"
-    Write-Evidence "idle_after_force=$($idle1.State)"
-    Write-Evidence "idle_before_message=$($idle2.State)"
-    Write-Evidence "idle_after_message=$($idle3.State)"
-    Write-Evidence "failure_scan_hit_count=$($failureHits.Count)"
-
-    if ($sound -eq "Y" -and $freshRecord) {
-        return (Finish-Run -Status "PASS" -Reason "sound heard and fresh/updated CloneApp NotificationRecord captured")
-    }
-
-    if ($sound -eq "N" -and -not $freshRecord -and $postNotif.Count -eq 0) {
-        return (Finish-Run -Status "FAIL" -Reason "no sound and no CloneApp NotificationRecord after message")
-    }
-
-    return (Finish-Run -Status "INCONCLUSIVE" -Reason "sound/NotificationRecord evidence did not agree cleanly")
-}
-
-$allSummaries = @()
-
-for ($run = 1; $run -le $Runs; $run++) {
-    Write-Host ""
-    Write-Host ("===== CloneApp Lite locked-notification gate: run {0}/{1} =====" -f $run, $Runs)
-    $allSummaries += Invoke-GateRun -RunNumber $run
-
-    if ($run -lt $Runs) {
-        [void](Read-Host "Run $run complete. Press Enter when ready to set up the next run")
-    }
-}
-
-Write-Host ""
-Write-Host "===== Completed $Runs run(s) ====="
 foreach ($summary in $allSummaries) {
     Write-Host $summary
 }
