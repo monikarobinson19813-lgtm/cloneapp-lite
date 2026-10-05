@@ -168,7 +168,7 @@ function Get-ProcessSnapshot {
     })
 
     $guestPx = @($matched | Where-Object {
-        $_ -match "$hostPattern:p\d+\b"
+        $_ -match "${hostPattern}:p\d+\b"
     })
 
     $physicalGuest = @($matched | Where-Object {
