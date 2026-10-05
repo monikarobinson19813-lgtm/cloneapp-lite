@@ -19,7 +19,7 @@ public final class ServiceStartPolicy {
         return supportedForegroundServiceType(guestType, Build.VERSION.SDK_INT);
     }
 
-    static int supportedForegroundServiceType(int guestType, int sdkInt) {
+    public static int supportedForegroundServiceType(int guestType, int sdkInt) {
         int supported = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
         if (sdkInt >= Build.VERSION_CODES.R) {
             supported |= ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;
