@@ -573,6 +573,12 @@ public class BPackageManager extends BlackManager<IBPackageManagerService> {
     }
 
     public boolean isInstalled(String packageName, int userId) {
+        // Temporary CLF-9 diagnostic: identify the exact caller that is
+        // passing a virtual notification-channel id as a package name.
+        if (packageName != null && packageName.contains("@black-")) {
+            Log.w(TAG, "CLF9_DIAG channel-like value reached isInstalled: " + packageName,
+                    new Throwable("CLF9_DIAG_CALLER"));
+        }
         
         if (shouldUseFallbackMode()) {
             Log.w(TAG, "Using fallback isInstalled check for " + packageName + " due to service failures");
