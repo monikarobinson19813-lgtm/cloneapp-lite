@@ -378,7 +378,7 @@ function Invoke-GateRun {
     )
 
     if ($daemon.ExitCode -ne 0 -or $daemon.Output -notmatch '<boolean\s+name="mDaemonEnable"\s+value="false"\s*/>') {
-        return Finish-Run -Status "INCONCLUSIVE" -Reason "mDaemonEnable=false was not verified"
+        return (Finish-Run -Status "INCONCLUSIVE" -Reason "mDaemonEnable=false was not verified")
     }
 
     if ($Mode -eq "COLD") {
@@ -392,15 +392,15 @@ function Invoke-GateRun {
     $before = Get-ProcessSnapshot -Label "PROCESS STATE BEFORE LOCK"
 
     if ($before.ExitCode -ne 0) {
-        return Finish-Run -Status "INCONCLUSIVE" -Reason "could not capture pre-lock process state"
+        return (Finish-Run -Status "INCONCLUSIVE" -Reason "could not capture pre-lock process state")
     }
 
     if ($Mode -eq "COLD" -and $before.HostCount -ne 0) {
-        return Finish-Run -Status "INCONCLUSIVE" -Reason "COLD setup failed: CloneApp process still present after force-stop"
+        return (Finish-Run -Status "INCONCLUSIVE" -Reason "COLD setup failed: CloneApp process still present after force-stop")
     }
 
     if ($Mode -eq "WARM" -and ($before.HostCount -eq 0 -or $before.GuestPxCount -eq 0)) {
-        return Finish-Run -Status "INCONCLUSIVE" -Reason "WARM setup not verified: CloneApp/guest pX process missing before lock"
+        return (Finish-Run -Status "INCONCLUSIVE" -Reason "WARM setup not verified: CloneApp/guest pX process missing before lock")
     }
 
     $preNotif = Get-NotificationSnapshot -Label "NOTIFICATION STATE BEFORE LOCK"
@@ -415,7 +415,7 @@ function Invoke-GateRun {
     $idle1 = Get-IdleState -Label "after force-idle"
 
     if ($forceIdle.ExitCode -ne 0 -or $idle1.ExitCode -ne 0 -or $idle1.State -ne "IDLE") {
-        return Finish-Run -Status "INCONCLUSIVE" -Reason "deep IDLE was not confirmed immediately after force-idle"
+        return (Finish-Run -Status "INCONCLUSIVE" -Reason "deep IDLE was not confirmed immediately after force-idle")
     }
 
     Write-Evidence "[$(Get-IsoTimestamp)] wait_start minutes=$WaitMinutes"
@@ -430,7 +430,7 @@ function Invoke-GateRun {
     $idle2 = Get-IdleState -Label "after wait / before message"
 
     if ($idle2.ExitCode -ne 0 -or $idle2.State -ne "IDLE") {
-        return Finish-Run -Status "INCONCLUSIVE" -Reason "device was not in deep IDLE at the end of the wait"
+        return (Finish-Run -Status "INCONCLUSIVE" -Reason "device was not in deep IDLE at the end of the wait")
     }
 
     [void](Read-Host "WAIT COMPLETE. Send ONE normal WhatsApp text to User$VirtualUser now from the other phone. Press Enter here immediately after sending")
@@ -480,14 +480,14 @@ function Invoke-GateRun {
     Write-Evidence "failure_scan_hit_count=$($failureHits.Count)"
 
     if ($sound -eq "Y" -and $freshRecord) {
-        return Finish-Run -Status "PASS" -Reason "sound heard and fresh/updated CloneApp NotificationRecord captured"
+        return (Finish-Run -Status "PASS" -Reason "sound heard and fresh/updated CloneApp NotificationRecord captured")
     }
 
     if ($sound -eq "N" -and -not $freshRecord -and $postNotif.Count -eq 0) {
-        return Finish-Run -Status "FAIL" -Reason "no sound and no CloneApp NotificationRecord after message"
+        return (Finish-Run -Status "FAIL" -Reason "no sound and no CloneApp NotificationRecord after message")
     }
 
-    return Finish-Run -Status "INCONCLUSIVE" -Reason "sound/NotificationRecord evidence did not agree cleanly"
+    return (Finish-Run -Status "INCONCLUSIVE" -Reason "sound/NotificationRecord evidence did not agree cleanly")
 }
 
 $allSummaries = @()
