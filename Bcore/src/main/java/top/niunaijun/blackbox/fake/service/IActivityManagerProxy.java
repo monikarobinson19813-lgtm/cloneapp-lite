@@ -757,14 +757,7 @@ public class IActivityManagerProxy extends ClassInvocationStub {
     public static class setServiceForeground extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            
-            
-            for (int i = args.length - 1; i >= 0; i--) {
-                if (args[i] instanceof Integer) {
-                    args[i] = 0; 
-                    break;
-                }
-            }
+            Log.i("CLF9_BISECT", "CLF9_BISECT_BUILD3_FGS_TYPE args=" + (args == null ? 0 : args.length));
             return method.invoke(who, args);
         }
     }
