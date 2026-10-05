@@ -15,6 +15,10 @@ import top.niunaijun.blackboxa.biz.cache.AppSharedPreferenceDelegate
 
 class BlackBoxLoader {
 
+    // Temporary coexistence-test gate. Keep the inherited VPN implementation
+    // intact, but force CloneApp Lite to use the normal network path.
+    private val cloneAppVpnEnabled = false
+
     private var mHideRoot by AppSharedPreferenceDelegate(App.getContext(), false)
 
     private var mDaemonEnable by AppSharedPreferenceDelegate(App.getContext(), false)
@@ -94,6 +98,9 @@ class BlackBoxLoader {
     }
 
     fun useVpnNetwork(): Boolean {
+        if (!cloneAppVpnEnabled) {
+            return false
+        }
         return try {
             mUseVpnNetwork
         } catch (e: Exception) {
@@ -254,6 +261,9 @@ class BlackBoxLoader {
                                 }
 
                                 override fun isUseVpnNetwork(): Boolean {
+                                    if (!cloneAppVpnEnabled) {
+                                        return false
+                                    }
                                     return try {
                                         mUseVpnNetwork
                                     } catch (e: Exception) {
