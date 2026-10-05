@@ -2,6 +2,7 @@ package top.niunaijun.blackbox.fake.delegate;
 
 import android.content.IIntentReceiver;
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Process;
@@ -11,13 +12,13 @@ import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Map;
 
+import black.android.app.BRLoadedApkReceiverDispatcher;
 import black.android.app.BRLoadedApkReceiverDispatcherInnerReceiver;
 import black.android.content.BRIIntentReceiver;
 import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.proxy.record.ProxyBroadcastRecord;
 import top.niunaijun.blackbox.utils.Slog;
-import top.niunaijun.blackbox.utils.compat.BuildCompat;
 
 
 public class InnerReceiverDelegate extends IIntentReceiver.Stub {
@@ -71,16 +72,21 @@ public class InnerReceiverDelegate extends IIntentReceiver.Stub {
         }
         IIntentReceiver iIntentReceiver = mIntentReceiver.get();
         if (iIntentReceiver != null) {
-            if (BuildCompat.isU()) {
+            if (RegisteredReceiverDeliveryCompat.mustUseFrameworkDispatcher(Build.VERSION.SDK_INT)) {
                 try {
-                    // Android 14's ActivityThread carries an assumeDelivered bit
-                    // outside the legacy IIntentReceiver Binder signature. Our proxy
-                    // cannot receive that bit, so dispatch through the framework
-                    // InnerReceiver overload with explicit completion enabled.
-                    // ReceiverDispatcher.mIIntentReceiver already points at this
-                    // proxy binder, which keeps finishReceiver() on the token AMS
-                    // actually registered.
-                    BRLoadedApkReceiverDispatcherInnerReceiver.get(iIntentReceiver)
+                    // Android 14+ only gives the real framework InnerReceiver the
+                    // assumeDelivered bit. Our proxy receives the legacy Binder call,
+                    // so route the guest intent through its owning ReceiverDispatcher.
+                    // That dispatcher creates the PendingResult and owns completion.
+                    WeakReference<?> dispatcherReference =
+                            BRLoadedApkReceiverDispatcherInnerReceiver
+                                    .getWithException(iIntentReceiver)
+                                    .mDispatcher();
+                    Object dispatcher = dispatcherReference == null ? null : dispatcherReference.get();
+                    if (dispatcher == null) {
+                        throw new IllegalStateException("ReceiverDispatcher is no longer available");
+                    }
+                    BRLoadedApkReceiverDispatcher.getWithException(dispatcher)
                             .performReceive(
                                     perIntent,
                                     resultCode,
@@ -94,7 +100,10 @@ public class InnerReceiverDelegate extends IIntentReceiver.Stub {
                                     null);
                     return;
                 } catch (Throwable t) {
-                    Slog.w(TAG, "Android 14 registered-receiver completion path failed; falling back", t);
+                    Slog.e(TAG, "Android 14 registered-receiver framework dispatch failed", t);
+                    throw new RemoteException(
+                            "Android 14 registered-receiver framework dispatch failed: "
+                                    + t.getClass().getSimpleName());
                 }
             }
             BRIIntentReceiver.get(iIntentReceiver).performReceive(

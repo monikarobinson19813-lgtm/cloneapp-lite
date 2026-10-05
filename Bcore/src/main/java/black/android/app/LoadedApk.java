@@ -90,6 +90,11 @@ public interface LoadedApk {
         @BMethod
         IInterface getIIntentReceiver();
 
+        @BMethod
+        void performReceive(Intent intent, int resultCode, String data, Bundle extras,
+                            boolean ordered, boolean sticky, boolean assumeDelivered,
+                            int sendingUser, int sendingUid, String sendingPackage);
+
         @BClassName("android.app.LoadedApk$ReceiverDispatcher$InnerReceiver")
         interface InnerReceiver {
             @BField
