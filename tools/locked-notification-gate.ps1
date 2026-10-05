@@ -163,7 +163,7 @@ function Get-ProcessSnapshot {
         $_ -match $hostPattern -or $_ -match $guestPattern
     })
 
-    $host = @($matched | Where-Object {
+    $hostProcesses = @($matched | Where-Object {
         $_ -match "(^|\s)$hostPattern(?:$|:)"
     })
 
@@ -178,7 +178,7 @@ function Get-ProcessSnapshot {
     Write-Section $Label
     Write-Evidence "timestamp=$(Get-IsoTimestamp)"
     Write-Evidence "adb_exit=$($r.ExitCode)"
-    Write-Evidence "cloneapp_process_count=$($host.Count)"
+    Write-Evidence "cloneapp_process_count=$($hostProcesses.Count)"
     Write-Evidence "guest_px_process_count=$($guestPx.Count)"
     Write-Evidence "physical_whatsapp_process_count=$($physicalGuest.Count)"
     if ($matched.Count -gt 0) {
@@ -189,7 +189,7 @@ function Get-ProcessSnapshot {
 
     return [pscustomobject]@{
         ExitCode      = $r.ExitCode
-        HostCount     = $host.Count
+        HostCount     = $hostProcesses.Count
         GuestPxCount  = $guestPx.Count
         MatchedLines  = $matched
     }
