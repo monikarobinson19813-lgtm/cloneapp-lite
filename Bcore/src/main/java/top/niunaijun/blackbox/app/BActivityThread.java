@@ -257,6 +257,15 @@ public class BActivityThread extends IBActivityThread.Stub {
         }
     }
 
+    /**
+     * Creates a service that was scheduled through JobScheduler. Some libraries (for
+     * example JobIntentService-style implementations) are ordinary Service subclasses
+     * backed by a JobServiceEngine rather than direct JobService subclasses.
+     */
+    public Service createScheduledService(ServiceInfo serviceInfo) {
+        return createService(serviceInfo, BActivityThread.currentActivityThread().getActivityThread());
+    }
+
     public JobService createJobService(ServiceInfo serviceInfo) {
         if (!BActivityThread.currentActivityThread().isInit()) {
             BActivityThread.currentActivityThread().bindApplication(serviceInfo.packageName, serviceInfo.processName);
