@@ -7,6 +7,7 @@ import java.lang.reflect.Method;
 
 import black.android.os.BRServiceManager;
 import top.niunaijun.blackbox.BlackBoxCore;
+import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.fake.hook.BinderInvocationStub;
 import top.niunaijun.blackbox.fake.hook.MethodHook;
 import top.niunaijun.blackbox.fake.hook.ProxyMethod;
@@ -63,6 +64,11 @@ public class GmsProxy extends BinderInvocationStub {
                 
                 if (args != null && args.length > 0) {
                     String callingPackage = (String) args[0];
+                    Slog.d(TAG, "GMS_BINDER_CALL method=getService guestPackage="
+                            + BActivityThread.getAppPackageName()
+                            + " process=" + BActivityThread.getAppProcessName()
+                            + " userId=" + BActivityThread.getUserId()
+                            + " callingPackage=" + callingPackage);
                     if ("com.google.android.gms".equals(callingPackage)) {
                         
                         args[0] = BlackBoxCore.getHostPkg();

@@ -10,10 +10,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 import black.android.app.BRIServiceConnectionO;
+import top.niunaijun.blackbox.app.BActivityThread;
+import top.niunaijun.blackbox.utils.Slog;
 import top.niunaijun.blackbox.utils.compat.BuildCompat;
 
 
 public class ServiceConnectionDelegate extends IServiceConnection.Stub {
+    private static final String TAG = "ServiceConnectionDelegate";
     private static final Map<IBinder, ServiceConnectionDelegate> sServiceConnectDelegate = new HashMap<>();
     private final IServiceConnection mConn;
     private final ComponentName mComponentName;
@@ -54,6 +57,14 @@ public class ServiceConnectionDelegate extends IServiceConnection.Stub {
     }
 
     public void connected(ComponentName name, IBinder service, boolean dead) throws RemoteException {
+        if (mComponentName != null && "com.google.android.gms".equals(mComponentName.getPackageName())) {
+            Slog.d(TAG, "GMS_SERVICE_CONNECTED guestPackage="
+                    + BActivityThread.getAppPackageName()
+                    + " process=" + BActivityThread.getAppProcessName()
+                    + " userId=" + BActivityThread.getUserId()
+                    + " target=" + mComponentName.flattenToShortString()
+                    + " dead=" + dead);
+        }
         if (BuildCompat.isOreo()) {
             BRIServiceConnectionO.get(mConn).connected(mComponentName, service, dead);
         } else {
