@@ -27,6 +27,7 @@ import top.niunaijun.blackbox.entity.UnbindRecord;
 import top.niunaijun.blackbox.entity.am.RunningServiceInfo;
 import top.niunaijun.blackbox.proxy.ProxyManifest;
 import top.niunaijun.blackbox.proxy.record.ProxyServiceRecord;
+import top.niunaijun.blackbox.utils.Slog;
 
 
 @SuppressLint("NewApi")
@@ -43,6 +44,7 @@ public class ActiveServices {
             return;
 
         ServiceInfo serviceInfo = resolveInfo.serviceInfo;
+        logWhatsAppServiceDispatch("WA_SERVICE_START", intent, serviceInfo, userId);
         ProcessRecord processRecord = BProcessManagerService.get().startProcessLocked(serviceInfo.packageName, serviceInfo.processName, userId, -1, Binder.getCallingPid());
         if (processRecord == null) {
             throw new RuntimeException("Unable to create " + serviceInfo.name);
@@ -97,6 +99,7 @@ public class ActiveServices {
         if (resolveInfo == null)
             return intent;
         ServiceInfo serviceInfo = resolveInfo.serviceInfo;
+        logWhatsAppServiceDispatch("WA_SERVICE_BIND", intent, serviceInfo, userId);
         ProcessRecord processRecord = BProcessManagerService.get().startProcessLocked(
                 serviceInfo.packageName,
                 serviceInfo.processName,
@@ -265,6 +268,24 @@ public class ActiveServices {
 
     private ResolveInfo resolveService(Intent intent, String resolvedType, int userId) {
         return BPackageManagerService.get().resolveService(intent, 0, resolvedType, userId);
+    }
+
+    private void logWhatsAppServiceDispatch(String marker, Intent intent, ServiceInfo serviceInfo, int userId) {
+        if (serviceInfo == null || !"com.whatsapp".equals(serviceInfo.packageName)) {
+            return;
+        }
+        int callingPid = Binder.getCallingPid();
+        ProcessRecord caller = BProcessManagerService.get().findProcessByPid(callingPid);
+        String sourcePackage = caller == null ? "UNKNOWN" : caller.getPackageName();
+        String sourceProcess = caller == null ? "UNKNOWN" : caller.processName;
+        int sourceUserId = caller == null ? userId : caller.userId;
+        ComponentName target = new ComponentName(serviceInfo.packageName, serviceInfo.name);
+        Slog.d(TAG, marker
+                + " sourcePackage=" + sourcePackage
+                + " sourceProcess=" + sourceProcess
+                + " sourceUserId=" + sourceUserId
+                + " target=" + target.flattenToShortString()
+                + " action=" + (intent == null ? null : intent.getAction()));
     }
 
     public static class RunningServiceRecord extends IEmpty.Stub {
