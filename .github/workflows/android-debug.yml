@@ -64,6 +64,74 @@ jobs:
       - name: Run JVM regression gates
         run: ./gradlew testDebugUnitTest
 
+      - name: Report CLF-9 receiver bridge regression evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+          import xml.etree.ElementTree as ET
+
+          result_dir = Path("app/build/test-results/testDebugUnitTest")
+          matches = list(result_dir.glob("TEST-*RegisteredReceiverBridgeRobolectricTest.xml"))
+          if len(matches) != 1:
+              print(f"CLF9_RECEIVER_GATE RED: expected exactly one JUnit XML, found {len(matches)}", file=sys.stderr)
+              for match in matches:
+                  print(f"  {match}", file=sys.stderr)
+              sys.exit(1)
+
+          root = ET.parse(matches[0]).getroot()
+          tests = int(root.attrib.get("tests", "0"))
+          failures = int(root.attrib.get("failures", "0"))
+          errors = int(root.attrib.get("errors", "0"))
+          skipped = int(root.attrib.get("skipped", "0"))
+          suite_time = float(root.attrib.get("time", "0"))
+
+          cases = root.findall("testcase")
+          expected = {
+              "screenOnPreservesFrameworkPendingResult",
+              "screenOffPreservesFrameworkPendingResult",
+              "userPresentPreservesFrameworkPendingResult",
+              "connectivityChangePreservesFrameworkPendingResult",
+              "proxyBroadcastUnwrapsTargetWithoutChangingCompletionIdentity",
+              "goAsyncKeepsFrameworkPendingResultWithGuestAndPreventsEarlyFinish",
+          }
+          actual = {case.attrib.get("name", "") for case in cases}
+
+          if tests != 6 or len(cases) != 6:
+              print(f"CLF9_RECEIVER_GATE RED: expected 6 tests, XML reports tests={tests}, testcases={len(cases)}", file=sys.stderr)
+              sys.exit(1)
+          if failures != 0 or errors != 0 or skipped != 0:
+              print(
+                  f"CLF9_RECEIVER_GATE RED: failures={failures} errors={errors} skipped={skipped}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          if actual != expected:
+              print(f"CLF9_RECEIVER_GATE RED: unexpected testcase set: {sorted(actual)}", file=sys.stderr)
+              sys.exit(1)
+          if suite_time <= 0:
+              print(f"CLF9_RECEIVER_GATE RED: non-positive suite duration {suite_time}", file=sys.stderr)
+              sys.exit(1)
+
+          durations = []
+          for case in cases:
+              name = case.attrib.get("name", "")
+              duration = float(case.attrib.get("time", "0"))
+              if duration <= 0:
+                  print(f"CLF9_RECEIVER_GATE RED: {name} has non-positive duration {duration}", file=sys.stderr)
+                  sys.exit(1)
+              durations.append((name, duration))
+
+          print(
+              f"CLF9_RECEIVER_GATE OK (6 tests) failures=0 errors=0 skipped=0 "
+              f"suite_duration={suite_time:.3f}s"
+          )
+          for name, duration in sorted(durations):
+              print(f"CLF9_RECEIVER_TEST {name} duration={duration:.3f}s")
+          PY
+
       - name: Assemble debug APKs
         run: ./gradlew :app:assembleDebug :teststub:assembleDebug
 

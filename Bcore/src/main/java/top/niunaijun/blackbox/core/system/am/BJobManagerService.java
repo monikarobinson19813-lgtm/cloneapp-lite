@@ -21,9 +21,11 @@ import top.niunaijun.blackbox.core.system.ProcessRecord;
 import top.niunaijun.blackbox.core.system.pm.BPackageManagerService;
 import top.niunaijun.blackbox.entity.JobRecord;
 import top.niunaijun.blackbox.proxy.ProxyManifest;
+import top.niunaijun.blackbox.utils.Slog;
 
 
 public class BJobManagerService extends IBJobManagerService.Stub implements ISystemService {
+    private static final String TAG = "BJobManagerService";
     private static final BJobManagerService sService = new BJobManagerService();
 
     
@@ -39,10 +41,16 @@ public class BJobManagerService extends IBJobManagerService.Stub implements ISys
         Intent intent = new Intent();
         intent.setComponent(componentName);
         ResolveInfo resolveInfo = BPackageManagerService.get().resolveService(intent, PackageManager.GET_META_DATA, null, userId);
-        if (resolveInfo == null) {
-            return info;
+        if (resolveInfo == null || resolveInfo.serviceInfo == null) {
+            Slog.w(TAG, "CLF9_JOB_SERVICE_REJECT reason=unresolved component=" + componentName);
+            return null;
         }
         ServiceInfo serviceInfo = resolveInfo.serviceInfo;
+        if (!JobServicePolicy.isSchedulableJobService(serviceInfo)) {
+            Slog.w(TAG, "CLF9_JOB_SERVICE_REJECT reason=not_job_service component="
+                    + componentName + " permission=" + serviceInfo.permission);
+            return null;
+        }
         ProcessRecord processRecord = BProcessManagerService.get().findProcessRecord(serviceInfo.packageName, serviceInfo.processName, userId);
         if (processRecord == null) {
             processRecord = BProcessManagerService.get().
