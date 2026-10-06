@@ -2,6 +2,7 @@ package top.niunaijun.blackbox.core.system;
 
 import android.app.ActivityManager;
 import android.content.Context;
+import android.content.ComponentName;
 import android.content.pm.ApplicationInfo;
 import android.os.Binder;
 import android.os.Bundle;
@@ -68,7 +69,7 @@ public class BProcessManagerService implements ISystemService {
                         return app;
                     }
                 }
-                bpid = getUsingBPidL();
+                bpid = getUsingBPidL(userId, packageName, processName);
                 Slog.d(TAG, "init bUid = " + buid + ", bPid = " + bpid);
             }
             if (bpid == -1) {
@@ -99,21 +100,68 @@ public class BProcessManagerService implements ISystemService {
         return app;
     }
 
-    private int getUsingBPidL() {
+    private int getUsingBPidL(int userId, String packageName, String processName) {
         ActivityManager manager = (ActivityManager) BlackBoxCore.getContext().getSystemService(Context.ACTIVITY_SERVICE);
         List<ActivityManager.RunningAppProcessInfo> runningAppProcesses = manager.getRunningAppProcesses();
         Set<Integer> usingPs = new HashSet<>();
         for (ActivityManager.RunningAppProcessInfo runningAppProcess : runningAppProcesses) {
             int i = parseBPid(runningAppProcess.processName);
-            usingPs.add(i);
+            if (i >= 0) {
+                usingPs.add(i);
+            }
         }
+
+        Set<Integer> recentTaskSlots = getRecentTaskProxySlots(manager);
         for (int i = 0; i < ProxyManifest.FREE_COUNT; i++) {
             if (usingPs.contains(i)) {
                 continue;
             }
+
+            // Diagnostic only: preserve the current allocator decision, but record whether
+            // Android still has a host task whose base intent points at the same proxy slot.
+            // This is the suspected stale-Recents collision behind CLF-6.
+            boolean recentTaskOccupied = recentTaskSlots.contains(i);
+            Slog.d(TAG, "PROXY_SLOT_ALLOC user=" + userId
+                    + " package=" + packageName
+                    + " process=" + processName
+                    + " bpid=" + i
+                    + " proxy=" + ProxyManifest.getProxyActivity(i)
+                    + " recentTaskOccupied=" + recentTaskOccupied
+                    + " recentTaskSlots=" + recentTaskSlots);
             return i;
         }
         return -1;
+    }
+
+    private Set<Integer> getRecentTaskProxySlots(ActivityManager manager) {
+        Set<Integer> slots = new HashSet<>();
+        try {
+            List<ActivityManager.AppTask> appTasks = manager.getAppTasks();
+            if (appTasks == null) {
+                return slots;
+            }
+            for (ActivityManager.AppTask appTask : appTasks) {
+                if (appTask == null) {
+                    continue;
+                }
+                ActivityManager.RecentTaskInfo taskInfo = appTask.getTaskInfo();
+                if (taskInfo == null || taskInfo.baseIntent == null) {
+                    continue;
+                }
+                ComponentName component = taskInfo.baseIntent.getComponent();
+                if (component == null) {
+                    continue;
+                }
+                int slot = ProxySlotDiagnostics.parseProxySlot(component.getClassName());
+                if (slot >= 0) {
+                    slots.add(slot);
+                }
+            }
+        } catch (Throwable e) {
+            Slog.w(TAG, "PROXY_SLOT_RECENTS_SCAN_FAILED " + e.getClass().getSimpleName()
+                    + ": " + e.getMessage());
+        }
+        return slots;
     }
 
     public void restartAppProcess(String packageName, String processName, int userId) {
