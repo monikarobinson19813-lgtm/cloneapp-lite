@@ -8,12 +8,14 @@ import android.content.pm.ProviderInfo;
 import android.content.pm.ResolveInfo;
 import android.os.Binder;
 import android.os.Bundle;
+import android.os.ConditionVariable;
 import android.os.IBinder;
 import android.os.RemoteException;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.core.system.BProcessManagerService;
@@ -194,16 +196,97 @@ public class BActivityManagerService extends IBActivityManagerService.Stub imple
             Slog.d(TAG, "scheduleBroadcastReceiver empty");
             return;
         }
+
         mBroadcastManager.sendBroadcast(pendingResultData);
+        int scheduledReceiverCount = 0;
+        final int callingPid = Binder.getCallingPid();
+
         for (ResolveInfo resolve : resolves) {
-            ProcessRecord processRecord = BProcessManagerService.get().findProcessRecord(resolve.activityInfo.packageName, resolve.activityInfo.processName, userId);
-            if (processRecord != null) {
-                ReceiverData data = new ReceiverData();
-                data.intent = intent;
-                data.activityInfo = resolve.activityInfo;
-                data.data = pendingResultData;
-                processRecord.bActivityThread.scheduleReceiver(data);
+            final String packageName = resolve.activityInfo.packageName;
+            final String processName = resolve.activityInfo.processName;
+            ProcessRecord processRecord = BProcessManagerService.get().findProcessRecord(packageName, processName, userId);
+
+            if (processRecord == null && ColdBroadcastStartPolicy.shouldColdStart(intent == null ? null : intent.getAction())) {
+                final AtomicReference<ProcessRecord> startedProcess = new AtomicReference<>();
+                final AtomicReference<Throwable> startFailure = new AtomicReference<>();
+                final ConditionVariable startComplete = new ConditionVariable();
+
+                Thread starter = new Thread(() -> {
+                    try {
+                        startedProcess.set(BProcessManagerService.get().startProcessLocked(
+                                packageName,
+                                processName,
+                                userId,
+                                -1,
+                                callingPid));
+                    } catch (Throwable t) {
+                        startFailure.set(t);
+                    } finally {
+                        startComplete.open();
+                    }
+                }, "CloneApp-ColdBroadcastStart");
+                starter.start();
+
+                if (!startComplete.block(ColdBroadcastStartPolicy.START_TIMEOUT_MS)) {
+                    starter.interrupt();
+                    Slog.e(TAG, "COLD_BROADCAST_START_FAILED reason=timeout"
+                            + " pkg=" + packageName
+                            + " process=" + processName
+                            + " user=" + userId);
+                } else if (startFailure.get() != null) {
+                    Slog.e(TAG, "COLD_BROADCAST_START_FAILED reason=exception"
+                            + " pkg=" + packageName
+                            + " process=" + processName
+                            + " user=" + userId
+                            + " error=" + startFailure.get().getClass().getSimpleName());
+                } else {
+                    processRecord = startedProcess.get();
+                    if (processRecord == null) {
+                        Slog.e(TAG, "COLD_BROADCAST_START_FAILED reason=null_process"
+                                + " pkg=" + packageName
+                                + " process=" + processName
+                                + " user=" + userId);
+                    } else {
+                        Slog.i(TAG, "COLD_BROADCAST_START_OK"
+                                + " pkg=" + packageName
+                                + " process=" + processName
+                                + " user=" + userId);
+                    }
+                }
+            } else if (processRecord == null) {
+                Slog.d(TAG, "COLD_BROADCAST_START_SKIPPED"
+                        + " action=" + (intent == null ? null : intent.getAction())
+                        + " pkg=" + packageName
+                        + " process=" + processName
+                        + " user=" + userId);
             }
+
+            if (processRecord == null) {
+                continue;
+            }
+
+            ReceiverData data = new ReceiverData();
+            data.intent = intent;
+            data.activityInfo = resolve.activityInfo;
+            data.data = pendingResultData;
+            try {
+                processRecord.bActivityThread.scheduleReceiver(data);
+                scheduledReceiverCount++;
+            } catch (RemoteException e) {
+                Slog.e(TAG, "BROADCAST_SCHEDULE_FAILED"
+                        + " pkg=" + packageName
+                        + " process=" + processName
+                        + " user=" + userId
+                        + " error=" + e.getClass().getSimpleName());
+            }
+        }
+
+        if (scheduledReceiverCount == 0) {
+            mBroadcastManager.finishBroadcast(pendingResultData);
+            pendingResultData.build().finish();
+            Slog.w(TAG, "BROADCAST_UNDELIVERED_FINISHED"
+                    + " action=" + (intent == null ? null : intent.getAction())
+                    + " user=" + userId);
         }
     }
 

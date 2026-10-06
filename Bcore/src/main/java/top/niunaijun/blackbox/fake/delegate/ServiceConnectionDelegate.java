@@ -4,16 +4,20 @@ import android.app.IServiceConnection;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.os.IBinder;
+import android.os.Parcel;
 import android.os.RemoteException;
 
 import java.util.HashMap;
 import java.util.Map;
 
 import black.android.app.BRIServiceConnectionO;
+import top.niunaijun.blackbox.app.BActivityThread;
+import top.niunaijun.blackbox.utils.Slog;
 import top.niunaijun.blackbox.utils.compat.BuildCompat;
 
 
 public class ServiceConnectionDelegate extends IServiceConnection.Stub {
+    private static final String TAG = "ServiceConnectionDelegate";
     private static final Map<IBinder, ServiceConnectionDelegate> sServiceConnectDelegate = new HashMap<>();
     private final IServiceConnection mConn;
     private final ComponentName mComponentName;
@@ -49,11 +53,33 @@ public class ServiceConnectionDelegate extends IServiceConnection.Stub {
     }
 
     @Override
+    public boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
+        if ("com.whatsapp".equals(BActivityThread.getAppPackageName())) {
+            Slog.d(TAG, "WA_SERVICE_CONNECTION_CALLBACK guestPackage="
+                    + BActivityThread.getAppPackageName()
+                    + " process=" + BActivityThread.getAppProcessName()
+                    + " userId=" + BActivityThread.getUserId()
+                    + " target=" + (mComponentName == null ? null : mComponentName.flattenToShortString())
+                    + " code=" + code
+                    + " flags=" + flags);
+        }
+        return super.onTransact(code, data, reply, flags);
+    }
+
+    @Override
     public void connected(ComponentName name, IBinder service) throws RemoteException {
         connected(name, service, false);
     }
 
     public void connected(ComponentName name, IBinder service, boolean dead) throws RemoteException {
+        if (mComponentName != null && "com.google.android.gms".equals(mComponentName.getPackageName())) {
+            Slog.d(TAG, "GMS_SERVICE_CONNECTED guestPackage="
+                    + BActivityThread.getAppPackageName()
+                    + " process=" + BActivityThread.getAppProcessName()
+                    + " userId=" + BActivityThread.getUserId()
+                    + " target=" + mComponentName.flattenToShortString()
+                    + " dead=" + dead);
+        }
         if (BuildCompat.isOreo()) {
             BRIServiceConnectionO.get(mConn).connected(mComponentName, service, dead);
         } else {
