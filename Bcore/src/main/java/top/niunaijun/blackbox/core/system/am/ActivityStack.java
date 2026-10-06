@@ -138,7 +138,21 @@ public class ActivityStack {
         }
 
         
-        if (taskRecord == null || taskRecord.needNewTask()) {
+        boolean selectedNeedsNewTask = taskRecord != null && taskRecord.needNewTask();
+        int maskedLiveTaskId = findMaskedLiveTaskId(userId, taskAffinity, taskRecord, selectedNeedsNewTask);
+        Slog.d(TAG, "TASK_REUSE_DECISION user=" + userId
+                + " affinity=" + taskAffinity
+                + " selectedTask=" + (taskRecord == null ? -1 : taskRecord.id)
+                + " selectedNeedsNewTask=" + selectedNeedsNewTask
+                + " maskedLiveTask=" + maskedLiveTaskId
+                + " trackedTasks=" + mTasks.size());
+
+        if (taskRecord == null || selectedNeedsNewTask) {
+            Slog.d(TAG, "TASK_NEW_ANDROID_TASK user=" + userId
+                    + " package=" + activityInfo.packageName
+                    + " affinity=" + taskAffinity
+                    + " reason=" + (taskRecord == null ? "NO_MATCHING_TASK" : "SELECTED_TASK_NOT_LIVE")
+                    + " maskedLiveTask=" + maskedLiveTaskId);
             return startActivityInNewTaskLocked(userId, intent, activityInfo, resultTo, launchModeFlags);
         }
         
@@ -421,6 +435,25 @@ public class ActivityStack {
             }
         }
         return record;
+    }
+
+    private int findMaskedLiveTaskId(int userId, String taskAffinity, TaskRecord selectedTask, boolean selectedNeedsNewTask) {
+        List<TaskReuseDiagnostics.TaskState> states = new LinkedList<>();
+        synchronized (mTasks) {
+            for (TaskRecord task : mTasks.values()) {
+                states.add(new TaskReuseDiagnostics.TaskState(
+                        task.id,
+                        task.userId,
+                        task.taskAffinity,
+                        !task.needNewTask()));
+            }
+        }
+        return TaskReuseDiagnostics.findMaskedLiveTaskId(
+                userId,
+                taskAffinity,
+                selectedTask == null ? -1 : selectedTask.id,
+                selectedNeedsNewTask,
+                states);
     }
 
     private TaskRecord findTaskRecordByTaskAffinityLocked(int userId, String taskAffinity) {
