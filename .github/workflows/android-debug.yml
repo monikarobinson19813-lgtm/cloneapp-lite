@@ -67,12 +67,25 @@ jobs:
       - name: Assemble debug APKs
         run: ./gradlew :app:assembleDebug :teststub:assembleDebug
 
-      - name: Verify arm64-v8a APK
+      - name: Verify APK integrity and manifest invariants
         shell: bash
         run: |
           set -euo pipefail
-          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print
-          find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*arm64-v8a*.apk' | grep -q .
+          APK_DIR="app/build/outputs/apk/debug"
+          find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -print
+          find "$APK_DIR" -maxdepth 1 -type f -name '*arm64-v8a*.apk' | grep -q .
+          find "$APK_DIR" -maxdepth 1 -type f -name '*armeabi-v7a*.apk' | grep -q .
+          UNIVERSAL_APK="$(find "$APK_DIR" -maxdepth 1 -type f -name '*universal-debug.apk' -print -quit)"
+          test -n "$UNIVERSAL_APK"
+
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt -print | sort -V | tail -n 1)"
+          test -x "$AAPT"
+          "$AAPT" dump badging "$UNIVERSAL_APK" | grep -q "sdkVersion:'21'"
+          "$AAPT" dump badging "$UNIVERSAL_APK" | grep -q "targetSdkVersion:'34'"
+
+          grep -q 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE' Bcore/src/main/AndroidManifest.xml
+          grep -q 'android:foregroundServiceType="specialUse"' Bcore/src/main/AndroidManifest.xml
+          grep -q 'android.permission.FOREGROUND_SERVICE_MICROPHONE' Bcore/src/main/AndroidManifest.xml
 
       - name: Upload debug APKs
         uses: actions/upload-artifact@v4
