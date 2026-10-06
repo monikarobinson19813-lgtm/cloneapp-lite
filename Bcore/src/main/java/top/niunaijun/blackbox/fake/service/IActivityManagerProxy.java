@@ -111,7 +111,9 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             Slog.w(TAG, "ActivityManager invoke: SecurityException in " + methodName + ", returning safe default", e);
             
             
-            if (methodName.startsWith("set") || methodName.startsWith("update")) {
+            if ("clearApplicationUserData".equals(methodName)) {
+                return false;
+            } else if (methodName.startsWith("set") || methodName.startsWith("update")) {
                 return null; 
             } else if (methodName.startsWith("get") || methodName.startsWith("query")) {
                 return null; 
@@ -588,6 +590,17 @@ public class IActivityManagerProxy extends ClassInvocationStub {
                 if (o instanceof String[]) {
                     args[i] = null;
                 }
+            }
+
+            // Guest apps may request a broadcast as UserHandle.ALL (-1).  The
+            // virtual user has already been consumed above by sendBroadcast();
+            // never forward that virtual/all-users id to the real framework,
+            // because the host app does not hold INTERACT_ACROSS_USERS.
+            if (BroadcastUserIdCompat.rewriteLastUserId(args, BlackBoxCore.getHostUserId())) {
+                Slog.d(TAG, "BroadcastIntent: mapped framework user to host user "
+                        + BlackBoxCore.getHostUserId());
+            } else {
+                Slog.w(TAG, "BroadcastIntent: framework user argument not found; leaving call unchanged");
             }
             return method.invoke(who, args);
         }
