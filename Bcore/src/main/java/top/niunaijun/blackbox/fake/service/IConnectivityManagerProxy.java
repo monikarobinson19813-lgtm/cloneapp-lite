@@ -335,6 +335,7 @@ public class IConnectivityManagerProxy extends BinderInvocationStub {
                     
                     Object result = method.invoke(who, args);
                     if (result != null) {
+                        Slog.d(TAG, "CLF9_NET event=NETWORK_CAPABILITIES source=REAL class=" + result.getClass().getName());
                         
                         try {
                             Method addCapabilityMethod = result.getClass().getMethod("addCapability", int.class);
@@ -354,10 +355,12 @@ public class IConnectivityManagerProxy extends BinderInvocationStub {
                     nc = IConnectivityManagerProxy.createNetworkCapabilities();
                     
                     if (nc != null) {
+                        Slog.d(TAG, "CLF9_NET event=NETWORK_CAPABILITIES source=FALLBACK class=" + nc.getClass().getName());
                         Slog.d(TAG, "Created enhanced NetworkCapabilities for sandboxed app (fallback)");
                         return nc;
                     }
                 } catch (Exception e) {
+                    Slog.w(TAG, "CLF9_NET event=NETWORK_CAPABILITIES source=ERROR error=" + e.getClass().getSimpleName());
                     Slog.w(TAG, "Error creating NetworkCapabilities: " + e.getMessage());
                 }
             }
@@ -375,6 +378,7 @@ public class IConnectivityManagerProxy extends BinderInvocationStub {
                     
                     Object result = method.invoke(who, args);
                     if (result != null) {
+                        Slog.d(TAG, "CLF9_NET event=ACTIVE_NETWORK source=REAL class=" + result.getClass().getName());
                         return result;
                     }
 
@@ -397,9 +401,11 @@ public class IConnectivityManagerProxy extends BinderInvocationStub {
                             return method.invoke(who, args);
                         }
                     }
+                    Slog.d(TAG, "CLF9_NET event=ACTIVE_NETWORK source=FALLBACK class=" + network.getClass().getName());
                     Slog.d(TAG, "Created mock Network object for sandboxed app (fallback)");
                     return network;
                 } catch (Exception e) {
+                    Slog.w(TAG, "CLF9_NET event=ACTIVE_NETWORK source=ERROR error=" + e.getClass().getSimpleName());
                     Slog.w(TAG, "Error creating Network object: " + e.getMessage());
                 }
             }
@@ -566,9 +572,11 @@ public class IConnectivityManagerProxy extends BinderInvocationStub {
             try {
                 
                 Object result = method.invoke(who, args);
+                Slog.d(TAG, "CLF9_NET event=REGISTER_NETWORK_CALLBACK result=SUCCESS return=" + String.valueOf(result));
                 Slog.d(TAG, "Network callback registration successful");
                 return result;
             } catch (Exception e) {
+                Slog.w(TAG, "CLF9_NET event=REGISTER_NETWORK_CALLBACK result=ERROR error=" + e.getClass().getSimpleName());
                 Slog.w(TAG, "Network callback registration failed: " + e.getMessage());
                 
                 return 0;
@@ -585,9 +593,11 @@ public class IConnectivityManagerProxy extends BinderInvocationStub {
             try {
                 
                 Object result = method.invoke(who, args);
+                Slog.d(TAG, "CLF9_NET event=REGISTER_DEFAULT_NETWORK_CALLBACK result=SUCCESS return=" + String.valueOf(result));
                 Slog.d(TAG, "Default network callback registration successful");
                 return result;
             } catch (Exception e) {
+                Slog.w(TAG, "CLF9_NET event=REGISTER_DEFAULT_NETWORK_CALLBACK result=ERROR error=" + e.getClass().getSimpleName());
                 Slog.w(TAG, "Default network callback registration failed: " + e.getMessage());
                 
                 return 0;
@@ -759,9 +769,11 @@ public class IConnectivityManagerProxy extends BinderInvocationStub {
             try {
                 
                 Object result = method.invoke(who, args);
+                Slog.d(TAG, "CLF9_NET event=REGISTER_NETWORK_CALLBACK_REQUEST result=SUCCESS return=" + String.valueOf(result));
                 Slog.d(TAG, "Network callback registration with request successful");
                 return result;
             } catch (Exception e) {
+                Slog.w(TAG, "CLF9_NET event=REGISTER_NETWORK_CALLBACK_REQUEST result=ERROR error=" + e.getClass().getSimpleName());
                 Slog.w(TAG, "Network callback registration with request failed: " + e.getMessage());
                 
                 return 0;
