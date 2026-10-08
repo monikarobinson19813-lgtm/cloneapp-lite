@@ -190,10 +190,10 @@ public class BNotificationManagerService extends IBNotificationManagerService.St
         }
         NotificationRecord notificationRecord = getNotificationRecord(processByPid.getPackageName(), userId);
         synchronized (notificationRecord.mIds) {
-            notificationRecord.mIds.add(notificationId);
+            notificationRecord.mIds.add(new NotificationRecord.NotificationKey(tag, notificationId));
         }
         applyUserLabel(notification, userId);
-        mRealNotificationManager.notify(notificationId, notification);
+        mRealNotificationManager.notify(tag, notificationId, notification);
     }
 
     @Override
@@ -202,11 +202,11 @@ public class BNotificationManagerService extends IBNotificationManagerService.St
         if (processByPid == null)
             return;
         int notificationId = getNotificationId(userId, id, processByPid.getPackageName());
-        mRealNotificationManager.cancel(notificationId);
+        mRealNotificationManager.cancel(tag, notificationId);
 
         NotificationRecord notificationRecord = getNotificationRecord(processByPid.getPackageName(), userId);
         synchronized (notificationRecord.mIds) {
-            notificationRecord.mIds.remove(notificationId);
+            notificationRecord.mIds.remove(new NotificationRecord.NotificationKey(tag, notificationId));
         }
     }
 
@@ -269,8 +269,8 @@ public class BNotificationManagerService extends IBNotificationManagerService.St
                 mRealNotificationManager.deleteNotificationChannel(blackChannelId);
             }
         }
-        for (Integer id : notificationRecord.mIds) {
-            mRealNotificationManager.cancel(id);
+        for (NotificationRecord.NotificationKey key : notificationRecord.mIds) {
+            mRealNotificationManager.cancel(key.tag, key.id);
         }
         removeNotificationRecord(packageName, userId);
     }
