@@ -81,11 +81,33 @@ public class BPackageManagerService extends IBPackageManagerService.Stub impleme
             String action = intent.getAction();
             if (!TextUtils.isEmpty(action)) {
                 if ("android.intent.action.PACKAGE_ADDED".equals(action) || "android.intent.action.PACKAGE_REMOVED".equals(action)) {
-                    mSettings.scanPackage();
+                    reloadPackagesAndResolver();
                 }
             }
         }
     };
+
+    private void reloadPackagesAndResolver() {
+        synchronized (mPackages) {
+            final List<BPackage> previousPackages = new ArrayList<>();
+            for (BPackageSettings settings : mPackages.values()) {
+                previousPackages.add(settings.pkg);
+            }
+
+            ResolverRefreshSequence.run(
+                    mSettings::scanPackage,
+                    () -> {
+                        for (BPackage pkg : previousPackages) {
+                            mComponentResolver.removeAllComponents(pkg);
+                        }
+                    },
+                    () -> {
+                        for (BPackageSettings settings : mPackages.values()) {
+                            mComponentResolver.addAllComponents(settings.pkg);
+                        }
+                    });
+        }
+    }
 
     @Override
     public ApplicationInfo getApplicationInfo(String packageName, int flags, int userId) {
