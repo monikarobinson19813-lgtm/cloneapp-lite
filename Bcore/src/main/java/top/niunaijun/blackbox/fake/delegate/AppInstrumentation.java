@@ -9,6 +9,7 @@ import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.os.PersistableBundle;
 import android.util.Log;
+import android.view.WindowManager;
 
 import java.lang.reflect.Field;
 
@@ -115,6 +116,37 @@ public final class AppInstrumentation extends BaseInstrumentationDelegate implem
         ActivityManagerCompat.setActivityOrientation(activity, info.screenOrientation);
     }
 
+    private static boolean isVoipActivity(Activity activity) {
+        return activity != null && activity.getClass().getName().endsWith(".VoipActivityV2");
+    }
+
+    private static String diagnosticIdentity(Object object) {
+        return object == null ? "null" : Integer.toHexString(System.identityHashCode(object));
+    }
+
+    private static void logVoipLifecycle(String event, Activity activity) {
+        if (!isVoipActivity(activity)) return;
+        try {
+            WindowManager.LayoutParams attrs = activity.getWindow() == null ? null : activity.getWindow().getAttributes();
+            Object decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
+            Object decorToken = activity.getWindow() == null || activity.getWindow().getDecorView() == null
+                    ? null : activity.getWindow().getDecorView().getWindowToken();
+            Log.d(TAG, "CLF9_VOIP_LIFECYCLE"
+                    + " event=" + event
+                    + " activity=" + diagnosticIdentity(activity)
+                    + " taskId=" + activity.getTaskId()
+                    + " finishing=" + activity.isFinishing()
+                    + " destroyed=" + activity.isDestroyed()
+                    + " window=" + diagnosticIdentity(activity.getWindow())
+                    + " decor=" + diagnosticIdentity(decor)
+                    + " decorToken=" + diagnosticIdentity(decorToken)
+                    + " attrsToken=" + diagnosticIdentity(attrs == null ? null : attrs.token)
+                    + " title=" + (attrs == null ? "null" : String.valueOf(attrs.getTitle())));
+        } catch (Throwable t) {
+            Log.w(TAG, "CLF9_VOIP_LIFECYCLE event=" + event + " log_error=" + t.getClass().getSimpleName());
+        }
+    }
+
     @Override
     public Application newApplication(ClassLoader cl, String className, Context context) throws InstantiationException, IllegalAccessException, ClassNotFoundException {
         ContextCompat.fix(context);
@@ -126,12 +158,46 @@ public final class AppInstrumentation extends BaseInstrumentationDelegate implem
     public void callActivityOnCreate(Activity activity, Bundle icicle, PersistableBundle persistentState) {
         checkActivity(activity);
         super.callActivityOnCreate(activity, icicle, persistentState);
+        logVoipLifecycle("CREATE", activity);
     }
 
     @Override
     public void callActivityOnCreate(Activity activity, Bundle icicle) {
         checkActivity(activity);
         super.callActivityOnCreate(activity, icicle);
+        logVoipLifecycle("CREATE", activity);
+    }
+
+    @Override
+    public void callActivityOnStart(Activity activity) {
+        super.callActivityOnStart(activity);
+        logVoipLifecycle("START", activity);
+    }
+
+    @Override
+    public void callActivityOnResume(Activity activity) {
+        super.callActivityOnResume(activity);
+        logVoipLifecycle("RESUME", activity);
+    }
+
+    @Override
+    public void callActivityOnPause(Activity activity) {
+        logVoipLifecycle("PAUSE_BEFORE", activity);
+        super.callActivityOnPause(activity);
+        logVoipLifecycle("PAUSE_AFTER", activity);
+    }
+
+    @Override
+    public void callActivityOnStop(Activity activity) {
+        logVoipLifecycle("STOP_BEFORE", activity);
+        super.callActivityOnStop(activity);
+    }
+
+    @Override
+    public void callActivityOnDestroy(Activity activity) {
+        logVoipLifecycle("DESTROY_BEFORE", activity);
+        super.callActivityOnDestroy(activity);
+        logVoipLifecycle("DESTROY_AFTER", activity);
     }
 
     @Override
