@@ -10,6 +10,7 @@ import java.util.Map;
 import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.entity.JobRecord;
+import top.niunaijun.blackbox.fake.frameworks.BPackageManager;
 
 
 public class AppJobServiceDispatcher {
@@ -84,6 +85,12 @@ public class AppJobServiceDispatcher {
             }
             try {
                 JobRecord record = BlackBoxCore.getBJobManager().queryJobRecord(BlackBoxCore.getAppProcessName(), jobId);
+                if (record == null || record.mServiceInfo == null) {
+                    return null;
+                }
+                if (BPackageManager.get().isPackageReplacing(record.mServiceInfo.packageName)) {
+                    return null;
+                }
                 record.mJobService = BlackBoxCore.currentActivityThread().createJobService(record.mServiceInfo);
                 if (record.mJobService == null)
                     return null;

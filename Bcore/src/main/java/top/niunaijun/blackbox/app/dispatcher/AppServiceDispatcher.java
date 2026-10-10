@@ -14,6 +14,7 @@ import top.niunaijun.blackbox.BlackBoxCore;
 import top.niunaijun.blackbox.app.BActivityThread;
 import top.niunaijun.blackbox.entity.ServiceRecord;
 import top.niunaijun.blackbox.entity.UnbindRecord;
+import top.niunaijun.blackbox.fake.frameworks.BPackageManager;
 import top.niunaijun.blackbox.proxy.record.ProxyServiceRecord;
 
 import static android.app.Service.START_NOT_STICKY;
@@ -217,6 +218,10 @@ public class AppServiceDispatcher {
         Intent intent = proxyServiceRecord.mServiceIntent;
         ServiceInfo serviceInfo = proxyServiceRecord.mServiceInfo;
         IBinder token = proxyServiceRecord.mToken;
+
+        if (serviceInfo == null || BPackageManager.get().isPackageReplacing(serviceInfo.packageName)) {
+            return null;
+        }
 
         ServiceRecord record = findRecord(intent);
         if (record != null && record.getService() != null) {

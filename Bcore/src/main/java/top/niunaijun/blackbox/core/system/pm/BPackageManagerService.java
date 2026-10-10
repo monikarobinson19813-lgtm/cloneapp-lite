@@ -57,6 +57,7 @@ public class BPackageManagerService extends IBPackageManagerService.Stub impleme
     private final ComponentResolver mComponentResolver;
     private static final BUserManagerService sUserManager = BUserManagerService.get();
     private final List<PackageMonitor> mPackageMonitors = new ArrayList<>();
+    private final PackageReplacementState mPackageReplacementState = new PackageReplacementState();
 
     final Map<String, BPackageSettings> mPackages = mSettings.mPackages;
     final Object mInstallLock = new Object();
@@ -68,8 +69,9 @@ public class BPackageManagerService extends IBPackageManagerService.Stub impleme
     public BPackageManagerService() {
         mComponentResolver = new ComponentResolver();
         IntentFilter filter = new IntentFilter();
-        filter.addAction("android.intent.action.PACKAGE_ADDED");
-        filter.addAction("android.intent.action.PACKAGE_REMOVED");
+        filter.addAction(Intent.ACTION_PACKAGE_ADDED);
+        filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
         filter.addDataScheme("package");
         BlackBoxCore.getContext()
                 .registerReceiver(mPackageChangedHandler, filter);
@@ -79,13 +81,123 @@ public class BPackageManagerService extends IBPackageManagerService.Stub impleme
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            if (!TextUtils.isEmpty(action)) {
-                if ("android.intent.action.PACKAGE_ADDED".equals(action) || "android.intent.action.PACKAGE_REMOVED".equals(action)) {
-                    reloadPackagesAndResolver();
+            if (TextUtils.isEmpty(action)) {
+                return;
+            }
+
+            Uri data = intent.getData();
+            String packageName = data == null ? null : data.getSchemeSpecificPart();
+            boolean replacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false);
+            PackageReplacementState.BroadcastDisposition disposition =
+                    PackageReplacementState.classify(action, replacing);
+
+            if (disposition == PackageReplacementState.BroadcastDisposition.MARK_REPLACING
+                    || disposition == PackageReplacementState.BroadcastDisposition.KEEP_REPLACING) {
+                if (!TextUtils.isEmpty(packageName)) {
+                    markPackageReplacing(packageName, action);
                 }
+                return;
+            }
+
+            if (disposition == PackageReplacementState.BroadcastDisposition.COMPLETE_REPLACEMENT) {
+                if (TextUtils.isEmpty(packageName)) {
+                    Slog.w(TAG, "PACKAGE_REPLACED without package name");
+                    return;
+                }
+
+                markPackageReplacing(packageName, action);
+                reloadPackagesAndResolver();
+
+                if (!isSystemPackageRefreshComplete(packageName)) {
+                    Slog.w(TAG, "Replacement refresh incomplete; keeping gate for " + packageName);
+                    return;
+                }
+
+                BProcessManagerService.get().killAllByPackageName(packageName);
+                mPackageReplacementState.clear(packageName);
+                Slog.d(TAG, "Replacement complete; guest gate cleared for " + packageName);
+                return;
+            }
+
+            if (Intent.ACTION_PACKAGE_ADDED.equals(action) || Intent.ACTION_PACKAGE_REMOVED.equals(action)) {
+                if (!TextUtils.isEmpty(packageName)) {
+                    mPackageReplacementState.clear(packageName);
+                }
+                reloadPackagesAndResolver();
             }
         }
     };
+
+    private void markPackageReplacing(String packageName, String reason) {
+        if (mPackageReplacementState.mark(packageName)) {
+            Slog.d(TAG, "Replacement detected for " + packageName + " via " + reason);
+        }
+    }
+
+    boolean isPackageReplacementMarked(String packageName) {
+        return mPackageReplacementState.isReplacing(packageName);
+    }
+
+    @Override
+    public boolean isPackageReplacing(String packageName) {
+        if (TextUtils.isEmpty(packageName)) {
+            return false;
+        }
+        if (mPackageReplacementState.isReplacing(packageName)) {
+            return true;
+        }
+
+        synchronized (mPackages) {
+            BPackageSettings settings = mPackages.get(packageName);
+            if (settings == null || !settings.installOption.isFlag(InstallOption.FLAG_SYSTEM)) {
+                return false;
+            }
+
+            String persistedSourcePath = settings.pkg.baseCodePath;
+            if (TextUtils.isEmpty(persistedSourcePath) || !new File(persistedSourcePath).exists()) {
+                markPackageReplacing(packageName, "persisted source path unavailable");
+                return true;
+            }
+
+            try {
+                PackageInfo packageInfo = BlackBoxCore.getPackageManager()
+                        .getPackageInfo(packageName, PackageManager.GET_META_DATA);
+                String currentSourcePath = packageInfo.applicationInfo == null
+                        ? null
+                        : packageInfo.applicationInfo.sourceDir;
+                if (!Objects.equals(persistedSourcePath, currentSourcePath)) {
+                    markPackageReplacing(packageName, "physical source path changed");
+                    return true;
+                }
+            } catch (PackageManager.NameNotFoundException e) {
+                markPackageReplacing(packageName, "physical package temporarily unavailable");
+                return true;
+            } catch (Throwable t) {
+                Slog.w(TAG, "Unable to verify replacement state for " + packageName + "; gating guest start");
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isSystemPackageRefreshComplete(String packageName) {
+        synchronized (mPackages) {
+            BPackageSettings settings = mPackages.get(packageName);
+            if (settings == null || !settings.installOption.isFlag(InstallOption.FLAG_SYSTEM)) {
+                return true;
+            }
+            try {
+                PackageInfo packageInfo = BlackBoxCore.getPackageManager()
+                        .getPackageInfo(packageName, PackageManager.GET_META_DATA);
+                String currentSourcePath = packageInfo.applicationInfo == null
+                        ? null
+                        : packageInfo.applicationInfo.sourceDir;
+                return Objects.equals(settings.pkg.baseCodePath, currentSourcePath);
+            } catch (Throwable t) {
+                return false;
+            }
+        }
+    }
 
     private void reloadPackagesAndResolver() {
         synchronized (mPackages) {
