@@ -209,8 +209,9 @@ import top.niunaijun.blackbox.utils.compat.PackageParserCompat;
                 PackageInfo packageInfo = BlackBoxCore.getPackageManager().getPackageInfo(packageName, PackageManager.GET_META_DATA);
                 String currPackageSourcePath = packageInfo.applicationInfo.sourceDir;
                 if (!currPackageSourcePath.equals(bPackageSettings.pkg.baseCodePath)) {
-                    
-                    BProcessManagerService.get().killAllByPackageName(bPackageSettings.pkg.packageName);
+                    if (!BPackageManagerService.get().isPackageReplacementMarked(packageName)) {
+                        BProcessManagerService.get().killAllByPackageName(bPackageSettings.pkg.packageName);
+                    }
                     BPackageSettings newPkg = reInstallBySystem(packageInfo, bPackageSettings.installOption);
                     bPackageSettings.pkg = newPkg.pkg;
                 }
@@ -222,7 +223,12 @@ import top.niunaijun.blackbox.utils.compat.PackageParserCompat;
             Slog.d(TAG, "loaded Package: " + packageName);
         } catch (Throwable e) {
             e.printStackTrace();
-            
+
+            if (BPackageManagerService.get().isPackageReplacementMarked(packageName)) {
+                Slog.w(TAG, "Package refresh failed during replacement; preserving clone state for " + packageName);
+                return;
+            }
+
             FileUtils.deleteDir(app);
             removePackage(packageName);
             BProcessManagerService.get().killAllByPackageName(packageName);

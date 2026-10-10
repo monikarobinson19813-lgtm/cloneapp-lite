@@ -82,6 +82,23 @@ public class BPackageManager extends BlackManager<IBPackageManagerService> {
         return ServiceManager.PACKAGE_MANAGER;
     }
 
+    public boolean isPackageReplacing(String packageName) {
+        try {
+            IBPackageManagerService service = getServiceWithFallback();
+            if (service == null) {
+                Log.w(TAG, "PackageManager service unavailable while checking replacement; gating " + packageName);
+                return true;
+            }
+            return service.isPackageReplacing(packageName);
+        } catch (RemoteException e) {
+            Log.e(TAG, "Unable to check replacement state for " + packageName + "; gating guest start", e);
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Unexpected replacement-state failure for " + packageName + "; gating guest start", e);
+            return true;
+        }
+    }
+
     public Intent getLaunchIntentForPackage(String packageName, int userId) {
         
         if (shouldUseFallbackMode()) {

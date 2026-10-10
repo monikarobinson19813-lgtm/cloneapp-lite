@@ -47,6 +47,10 @@ public class BProcessManagerService implements ISystemService {
     }
 
     public ProcessRecord startProcessLocked(String packageName, String processName, int userId, int bpid, int callingPid) {
+        if (BPackageManagerService.get().isPackageReplacing(packageName)) {
+            Slog.w(TAG, "Refusing guest process start while physical package is replacing: " + packageName);
+            return null;
+        }
         ApplicationInfo info = BPackageManagerService.get().getApplicationInfo(packageName, 0, userId);
         if (info == null)
             return null;
