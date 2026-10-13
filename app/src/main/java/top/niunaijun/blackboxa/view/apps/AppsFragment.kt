@@ -76,7 +76,7 @@ class AppsFragment : Fragment() {
             viewBinding.stateView.showEmpty()
 
             mAdapter =
-                RVAdapter<AppInfo>(requireContext(), AppsAdapter()).bind(viewBinding.recyclerView)
+                RVAdapter<AppInfo>(requireContext(), AppsAdapter { info -> confirmDeleteInstance(info) }).bind(viewBinding.recyclerView)
 
             viewBinding.recyclerView.adapter = mAdapter
             
@@ -341,7 +341,7 @@ class AppsFragment : Fragment() {
                             try {
                                 when (item.itemId) {
                                     R.id.app_remove -> {
-                                        unInstallApk(data)
+                                        confirmDeleteInstance(data)
                                     }
 
                                     R.id.app_clear -> {
@@ -405,6 +405,17 @@ class AppsFragment : Fragment() {
                 }
             }
 
+            viewModel.instanceDeleteLiveData.observe(viewLifecycleOwner) { result ->
+                if (result != null && result.userId == userID) {
+                    hideLoading()
+                    requireContext().toast(result.message)
+                    viewModel.instanceDeleteLiveData.value = null
+                    if (result.success) {
+                        (requireActivity() as? MainActivity)?.onInstanceDeleted(userID)
+                    }
+                }
+            }
+
             viewModel.launchLiveData.observe(viewLifecycleOwner) {
                 try {
                     it?.run {
@@ -442,28 +453,27 @@ class AppsFragment : Fragment() {
         }
     }
 
-    private fun unInstallApk(info: AppInfo) {
+    private fun confirmDeleteInstance(info: AppInfo) {
         try {
+            val main = requireActivity() as? MainActivity ?: return
+            if (main.currentSelectedUserId() != userID) {
+                requireContext().toast("Select this instance before deleting")
+                return
+            }
             MaterialDialog(requireContext()).show {
-                title(R.string.uninstall_app)
-                message(text = getString(R.string.uninstall_app_hint, info.name))
-                positiveButton(R.string.done) {
-                    try {
-                        showLoading()
-                        viewModel.unInstall(info.packageName, userID)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error uninstalling app: ${e.message}")
-                        hideLoading()
-                    }
+                title(text = "Delete User $userID instance?")
+                message(text = "This permanently deletes ALL apps, chats, media and local data in User $userID. Other users remain intact. This cannot be undone.")
+                positiveButton(text = "Delete instance") {
+                    showLoading()
+                    viewModel.deleteInstance(info.packageName, userID)
                 }
-                negativeButton(R.string.cancel)
+                negativeButton(res = R.string.cancel)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error showing uninstall dialog: ${e.message}")
+            Log.e(TAG, "Error showing instance deletion confirmation: ${e.message}", e)
         }
     }
 
-    
     private fun stopApk(info: AppInfo) {
         try {
             MaterialDialog(requireContext()).show {
