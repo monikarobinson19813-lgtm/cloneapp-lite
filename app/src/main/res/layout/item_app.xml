@@ -14,6 +14,18 @@
                 android:id="@+id/icon"
                 android:layout_width="48dp"
                 android:layout_height="48dp" />
+
+        <ImageButton
+                android:id="@+id/delete_instance"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="top|end"
+                android:layout_marginTop="-8dp"
+                android:layout_marginEnd="-8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/delete_instance"
+                android:src="@android:drawable/ic_menu_delete"
+                android:tint="@android:color/holo_red_dark" />
     </FrameLayout>
 
     <TextView
