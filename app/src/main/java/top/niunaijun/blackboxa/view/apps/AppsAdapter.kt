@@ -20,7 +20,7 @@ import androidx.recyclerview.widget.RecyclerView
 
 
 
-class AppsAdapter : RVHolderFactory() {
+class AppsAdapter(private val onDeleteInstance: (AppInfo) -> Unit) : RVHolderFactory() {
     
     companion object {
         private const val TAG = "AppsAdapter"
@@ -30,15 +30,15 @@ class AppsAdapter : RVHolderFactory() {
 
     override fun createViewHolder(parent: ViewGroup?, viewType: Int, item: Any): RVHolder<out Any> {
         return try {
-            AppsVH(inflate(R.layout.item_app, parent))
+            AppsVH(inflate(R.layout.item_app, parent), onDeleteInstance)
         } catch (e: Exception) {
             Log.e(TAG, "Error creating ViewHolder: ${e.message}")
             
-            FallbackAppsVH(inflate(R.layout.item_app, parent))
+            FallbackAppsVH(inflate(R.layout.item_app, parent), onDeleteInstance)
         }
     }
 
-    class AppsVH(itemView: View) : RVHolder<AppInfo>(itemView) {
+    class AppsVH(itemView: View, private val onDeleteInstance: (AppInfo) -> Unit) : RVHolder<AppInfo>(itemView) {
         val binding = ItemAppBinding.bind(itemView)
         private var currentIcon: Drawable? = null
         private var isAttached = false
@@ -69,6 +69,8 @@ class AppsAdapter : RVHolderFactory() {
                 
                 
                 binding.name.text = item.name ?: "Unknown App"
+                binding.deleteInstance.visibility = if (item.packageName == "com.whatsapp" || item.packageName == "com.whatsapp.w4b") View.VISIBLE else View.GONE
+                binding.deleteInstance.setOnClickListener { onDeleteInstance(item) }
                 
                 
                 isAttached = true
@@ -141,7 +143,7 @@ class AppsAdapter : RVHolderFactory() {
     }
 
     
-    class FallbackAppsVH(itemView: View) : RVHolder<AppInfo>(itemView) {
+    class FallbackAppsVH(itemView: View, private val onDeleteInstance: (AppInfo) -> Unit) : RVHolder<AppInfo>(itemView) {
         val binding = ItemAppBinding.bind(itemView)
 
         override fun setContent(item: AppInfo, isSelected: Boolean, payload: Any?) {
@@ -149,6 +151,8 @@ class AppsAdapter : RVHolderFactory() {
                 
                 binding.icon.setImageDrawable(ColorDrawable(DEFAULT_ICON_COLOR))
                 binding.name.text = item.name ?: "Unknown App"
+                binding.deleteInstance.visibility = if (item.packageName == "com.whatsapp" || item.packageName == "com.whatsapp.w4b") View.VISIBLE else View.GONE
+                binding.deleteInstance.setOnClickListener { onDeleteInstance(item) }
             } catch (e: Exception) {
                 Log.e(TAG, "Error in fallback ViewHolder: ${e.message}")
             }

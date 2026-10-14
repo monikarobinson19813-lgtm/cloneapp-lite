@@ -7,6 +7,8 @@ import android.webkit.URLUtil
 import androidx.lifecycle.MutableLiveData
 import java.io.File
 import top.niunaijun.blackbox.BlackBoxCore
+import top.niunaijun.blackbox.core.env.BEnvironment
+import top.niunaijun.blackboxa.view.main.InstanceRouting
 import top.niunaijun.blackbox.utils.AbiUtils
 import top.niunaijun.blackboxa.R
 import top.niunaijun.blackboxa.app.AppManager
@@ -15,6 +17,8 @@ import top.niunaijun.blackboxa.bean.InstalledAppBean
 import top.niunaijun.blackboxa.util.MemoryManager
 import top.niunaijun.blackboxa.util.getString
 
+
+data class InstanceDeleteResult(val userId: Int, val success: Boolean, val message: String)
 
 class AppsRepository : InstalledAppListSource {
     val TAG: String = "AppsRepository"
@@ -417,6 +421,50 @@ class AppsRepository : InstalledAppListSource {
         } catch (e: Exception) {
             Log.e(TAG, "Error uninstalling APK: ${e.message}")
             resultLiveData.postValue("Uninstallation failed: ${e.message}")
+        }
+    }
+
+    // Whole virtual-user deletion also removes hidden GMS packages and both user data roots.
+    // Keep all failure paths explicit: a missing user or partial wipe must never report success.
+    fun deleteInstance(
+        packageName: String,
+        userId: Int,
+        resultLiveData: MutableLiveData<InstanceDeleteResult>
+    ) {
+        try {
+            val core = BlackBoxCore.get()
+            val beforeIds = core.users.map { it.id }
+            if (!InstanceRouting.mayDeleteInstance(
+                    userId, beforeIds, packageName, core.isInstalled(packageName, userId)
+                )) {
+                resultLiveData.postValue(InstanceDeleteResult(userId, false, "Instance no longer matches the selected WhatsApp clone"))
+                return
+            }
+
+            core.deleteUser(userId)
+
+            val verified = InstanceRouting.deletionComplete(
+                userId,
+                beforeIds,
+                core.users.map { it.id },
+                BEnvironment.getUserDir(userId).exists(),
+                BEnvironment.getExternalUserDir(userId).exists()
+            ) && !core.isInstalled(packageName, userId)
+
+            if (!verified) {
+                resultLiveData.postValue(InstanceDeleteResult(userId, false, "Instance deletion incomplete; do not retry until checked"))
+                return
+            }
+
+            AppManager.mRemarkSharedPreferences.edit().apply {
+                remove("Remark$userId")
+                remove("AppList$userId")
+                apply()
+            }
+            resultLiveData.postValue(InstanceDeleteResult(userId, true, "User $userId instance and local data removed"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Instance deletion failed for userId=$userId", e)
+            resultLiveData.postValue(InstanceDeleteResult(userId, false, "Instance deletion failed; existing data must be checked"))
         }
     }
 
