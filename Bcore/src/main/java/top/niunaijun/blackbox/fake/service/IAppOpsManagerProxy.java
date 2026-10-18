@@ -81,21 +81,14 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
      */
     private static Object decideOrForward(Object who, Method method, Object[] args)
             throws Throwable {
-        String name = method.getName();
-        boolean check = name.startsWith("checkOperation")
-                || "checkAudioOperation".equals(name)
-                || "checkOpNoThrow".equals(name);
-        boolean note = "noteOperation".equals(name)
-                || "noteProxyOperation".equals(name)
-                || "noteOp".equals(name)
-                || "noteOpNoThrow".equals(name);
-        if ((check || note)
-                && (method.getReturnType() == int.class || method.getReturnType() == Integer.class)
-                && args != null && args.length > 0 && args[0] instanceof Integer
-                && AppOpsAllowlist.isAllowedPublicOp(getOpPublicName((Integer) args[0]))) {
-            return AppOpsManager.MODE_ALLOWED;
+        String publicOpName = null;
+        if (args != null && args.length > 0 && args[0] instanceof Integer) {
+            publicOpName = getOpPublicName((Integer) args[0]);
         }
-        return invokeReal(who, method, args);
+        // All return-type and lifecycle checks are made before a synthetic result.
+        return AppOpsMethodDispatcher.invoke(method.getName(), method.getReturnType(),
+                publicOpName, AppOpsManager.MODE_ALLOWED,
+                () -> invokeReal(who, method, args));
     }
 
     private static Object invokeReal(Object who, Method method, Object[] args)
