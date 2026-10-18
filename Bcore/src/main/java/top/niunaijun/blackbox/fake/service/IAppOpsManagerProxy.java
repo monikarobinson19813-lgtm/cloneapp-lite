@@ -63,33 +63,10 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
             }
         }
 
-        if (methodName.startsWith("check") || 
-            methodName.startsWith("note") || 
-            methodName.startsWith("start")) {
-            Slog.d(TAG, "AppOps invoke: Bypassing system for " + methodName + ", allowing operation");
-            return AppOpsManager.MODE_ALLOWED;
-        }
-        
-        
-        if (methodName.startsWith("finish")) {
-            Slog.d(TAG, "AppOps invoke: Bypassing system for " + methodName);
-            return null;
-        }
-        
-        
-        try {
-            MethodParameterUtils.replaceFirstAppPkg(args);
-            MethodParameterUtils.replaceLastUid(args);
-            return super.invoke(proxy, method, args);
-        } catch (SecurityException e) {
-            
-            Slog.w(TAG, "AppOps invoke: SecurityException caught for " + methodName + ", allowing operation", e);
-            return AppOpsManager.MODE_ALLOWED;
-        } catch (Exception e) {
-            Slog.e(TAG, "AppOps invoke: Error in method " + methodName, e);
-            
-            return AppOpsManager.MODE_ALLOWED;
-        }
+        // No blanket permission grants and no fail-open exception recovery.
+        MethodParameterUtils.replaceFirstAppPkg(args);
+        MethodParameterUtils.replaceLastUid(args);
+        return super.invoke(proxy, method, args);
     }
 
     @Override
@@ -97,11 +74,44 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
         return false;
     }
 
+    /**
+     * For int-returning check/note methods only: apply approved exact op public
+     * names. Object/void returns and all start/finish calls MUST hit the real
+     * service so token/session lifecycle and typed results remain intact.
+     */
+    private static Object decideOrForward(Object who, Method method, Object[] args)
+            throws Throwable {
+        String name = method.getName();
+        boolean check = name.startsWith("checkOperation")
+                || "checkAudioOperation".equals(name)
+                || "checkOpNoThrow".equals(name);
+        boolean note = "noteOperation".equals(name)
+                || "noteProxyOperation".equals(name)
+                || "noteOp".equals(name)
+                || "noteOpNoThrow".equals(name);
+        if ((check || note)
+                && (method.getReturnType() == int.class || method.getReturnType() == Integer.class)
+                && args != null && args.length > 0 && args[0] instanceof Integer
+                && AppOpsAllowlist.isAllowedPublicOp(getOpPublicName((Integer) args[0]))) {
+            return AppOpsManager.MODE_ALLOWED;
+        }
+        return invokeReal(who, method, args);
+    }
+
+    private static Object invokeReal(Object who, Method method, Object[] args)
+            throws Throwable {
+        try {
+            return method.invoke(who, args);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            throw e.getCause();
+        }
+    }
+
     @ProxyMethod("noteProxyOperation")
     public static class NoteProxyOperation extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            return AppOpsManager.MODE_ALLOWED;
+            return decideOrForward(who, method, args);
         }
     }
 
@@ -109,8 +119,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class CheckPackage extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            
-            return AppOpsManager.MODE_ALLOWED;
+            return invokeReal(who, method, args);
         }
     }
 
@@ -118,21 +127,15 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class CheckOperation extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            
-            
-            Slog.d(TAG, "AppOps CheckOperation: Bypassing system check, allowing operation");
-            return AppOpsManager.MODE_ALLOWED;
+            return decideOrForward(who, method, args);
         }
     }
 
-    
     @ProxyMethod("checkOperationForDevice")
     public static class CheckOperationForDevice extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            
-            Slog.d(TAG, "AppOps CheckOperationForDevice: Bypassing system check, allowing operation");
-            return AppOpsManager.MODE_ALLOWED;
+            return decideOrForward(who, method, args);
         }
     }
 
@@ -140,9 +143,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class NoteOperation extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            
-            Slog.d(TAG, "AppOps NoteOperation: Bypassing system check, allowing operation");
-            return AppOpsManager.MODE_ALLOWED;
+            return decideOrForward(who, method, args);
         }
     }
 
@@ -150,20 +151,15 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class CheckOpNoThrow extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            
-            Slog.d(TAG, "AppOps CheckOpNoThrow: Bypassing system check, allowing operation");
-            return AppOpsManager.MODE_ALLOWED;
+            return decideOrForward(who, method, args);
         }
     }
 
-    
     @ProxyMethod("startOp")
     public static class StartOp extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            
-            Slog.d(TAG, "AppOps StartOp: Bypassing system check, allowing operation");
-            return AppOpsManager.MODE_ALLOWED;
+            return invokeReal(who, method, args);
         }
     }
 
@@ -171,88 +167,64 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class StartOpNoThrow extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            
-            Slog.d(TAG, "AppOps StartOpNoThrow: Bypassing system check, allowing operation");
-            return AppOpsManager.MODE_ALLOWED;
+            return invokeReal(who, method, args);
         }
     }
 
-    
     @ProxyMethod("finishOp")
     public static class FinishOp extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            try {
-                int op = (int) args[0];
-                String name = getOpPublicName(op);
-                if (name != null && isMediaStorageOrAudioOp(name)) {
-                    Slog.d(TAG, "AppOps FinishOp: Finishing operation: " + name);
-                }
-            } catch (Throwable ignored) {
-            }
-            return null;
+            return invokeReal(who, method, args);
         }
     }
 
-    
     @ProxyMethod("noteOp")
     public static class NoteOp extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            try {
-                int op = (int) args[0];
-                String name = getOpPublicName(op);
-                if (name != null && (name.contains("RECORD_AUDIO") || name.contains("AUDIO") || name.contains("MICROPHONE"))) {
-                    Slog.d(TAG, "AppOps NoteOp: Allowing RECORD_AUDIO operation: " + name);
-                    return AppOpsManager.MODE_ALLOWED;
-                }
-            } catch (Throwable ignored) {
-            }
-            return method.invoke(who, args);
+            return decideOrForward(who, method, args);
         }
     }
 
-    
     @ProxyMethod("noteOpNoThrow")
     public static class NoteOpNoThrow extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            try {
-                int op = (int) args[0];
-                String name = getOpPublicName(op);
-                if (name != null && (name.contains("RECORD_AUDIO") || name.contains("AUDIO") || name.contains("MICROPHONE"))) {
-                    Slog.d(TAG, "AppOps NoteOpNoThrow: Allowing RECORD_AUDIO operation: " + name);
-                    return AppOpsManager.MODE_ALLOWED;
-                }
-            } catch (Throwable ignored) {
-            }
-            return method.invoke(who, args);
+            return decideOrForward(who, method, args);
         }
     }
 
-    private static boolean isMediaStorageOrAudioOp(String opPublicNameOrStr) {
-        if (opPublicNameOrStr == null) return false;
-        
-        String n = opPublicNameOrStr.toUpperCase();
-        return n.contains("READ_MEDIA")
-                || n.contains("READ_EXTERNAL_STORAGE")
-                || n.contains("RECORD_AUDIO")
-                || n.contains("CAPTURE_AUDIO_OUTPUT")
-                || n.contains("MODIFY_AUDIO_SETTINGS")
-                || n.contains("AUDIO")
-                || n.contains("MICROPHONE")
-                || n.contains("FOREGROUND_SERVICE")
-                || n.contains("SYSTEM_ALERT_WINDOW")
-                || n.contains("WRITE_SETTINGS")
-                || n.contains("ACCESS_FINE_LOCATION")
-                || n.contains("ACCESS_COARSE_LOCATION")
-                || n.contains("CAMERA")
-                || n.contains("BODY_SENSORS")
-                || n.contains("BLUETOOTH_SCAN")
-                || n.contains("BLUETOOTH_CONNECT")
-                || n.contains("BLUETOOTH_ADVERTISE")
-                || n.contains("NEARBY_WIFI_DEVICES")
-                || n.contains("POST_NOTIFICATIONS");
+    @ProxyMethod("checkOperationRaw")
+    public static class CheckOperationRaw extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            return decideOrForward(who, method, args);
+        }
+    }
+
+    @ProxyMethod("checkAudioOperation")
+    public static class CheckAudioOperation extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            return decideOrForward(who, method, args);
+        }
+    }
+
+    @ProxyMethod("startOperation")
+    public static class StartOperation extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            return invokeReal(who, method, args);
+        }
+    }
+
+    @ProxyMethod("finishOperation")
+    public static class FinishOperation extends MethodHook {
+        @Override
+        protected Object hook(Object who, Method method, Object[] args) throws Throwable {
+            return invokeReal(who, method, args);
+        }
     }
 
     private static String getOpPublicName(int op) {
