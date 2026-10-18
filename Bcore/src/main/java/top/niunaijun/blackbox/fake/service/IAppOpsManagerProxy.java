@@ -4,6 +4,11 @@ import android.app.AppOpsManager;
 import android.content.Context;
 import android.os.IBinder;
 import android.os.Binder;
+import android.os.Parcel;
+import android.os.RemoteException;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.lang.reflect.Method;
 
@@ -46,7 +51,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
         // Diagnostic-only: observe the original arguments BEFORE any guest/host translation.
         // This call must not change the existing return value or exception behavior.
-        logAppOpsMap(method, args);
+        logAppOpsMap(method, args, "invoke");
 
         String methodName = method.getName();
 
@@ -101,11 +106,20 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
         return false;
     }
 
+    @Override
+    public boolean transact(int code, @NonNull Parcel data, @Nullable Parcel reply, int flags)
+            throws RemoteException {
+        // Diagnostic only: raw Binder calls can bypass the Java invocation handler.
+        // Do not read, rewind or modify either Parcel or alter the delegate result.
+        logAppOpsRawTransact(code);
+        return super.transact(code, data, reply, flags);
+    }
+
     @ProxyMethod("noteProxyOperation")
     public static class NoteProxyOperation extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            logAppOpsMap(method, args);
+            logAppOpsMap(method, args, "hook");
             return AppOpsManager.MODE_ALLOWED;
         }
     }
@@ -114,7 +128,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class CheckPackage extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            logAppOpsMap(method, args);
+            logAppOpsMap(method, args, "hook");
             
             return AppOpsManager.MODE_ALLOWED;
         }
@@ -124,7 +138,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class CheckOperation extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            logAppOpsMap(method, args);
+            logAppOpsMap(method, args, "hook");
             
             
             Slog.d(TAG, "AppOps CheckOperation: Bypassing system check, allowing operation");
@@ -137,7 +151,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class CheckOperationForDevice extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            logAppOpsMap(method, args);
+            logAppOpsMap(method, args, "hook");
             
             Slog.d(TAG, "AppOps CheckOperationForDevice: Bypassing system check, allowing operation");
             return AppOpsManager.MODE_ALLOWED;
@@ -148,7 +162,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class NoteOperation extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            logAppOpsMap(method, args);
+            logAppOpsMap(method, args, "hook");
             
             Slog.d(TAG, "AppOps NoteOperation: Bypassing system check, allowing operation");
             return AppOpsManager.MODE_ALLOWED;
@@ -159,7 +173,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class CheckOpNoThrow extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            logAppOpsMap(method, args);
+            logAppOpsMap(method, args, "hook");
             
             Slog.d(TAG, "AppOps CheckOpNoThrow: Bypassing system check, allowing operation");
             return AppOpsManager.MODE_ALLOWED;
@@ -171,7 +185,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class StartOp extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            logAppOpsMap(method, args);
+            logAppOpsMap(method, args, "hook");
             
             Slog.d(TAG, "AppOps StartOp: Bypassing system check, allowing operation");
             return AppOpsManager.MODE_ALLOWED;
@@ -182,7 +196,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class StartOpNoThrow extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            logAppOpsMap(method, args);
+            logAppOpsMap(method, args, "hook");
             
             Slog.d(TAG, "AppOps StartOpNoThrow: Bypassing system check, allowing operation");
             return AppOpsManager.MODE_ALLOWED;
@@ -194,7 +208,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class FinishOp extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            logAppOpsMap(method, args);
+            logAppOpsMap(method, args, "hook");
             try {
                 int op = (int) args[0];
                 String name = getOpPublicName(op);
@@ -212,7 +226,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class NoteOp extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            logAppOpsMap(method, args);
+            logAppOpsMap(method, args, "hook");
             try {
                 int op = (int) args[0];
                 String name = getOpPublicName(op);
@@ -231,7 +245,7 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     public static class NoteOpNoThrow extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            logAppOpsMap(method, args);
+            logAppOpsMap(method, args, "hook");
             try {
                 int op = (int) args[0];
                 String name = getOpPublicName(op);
@@ -246,13 +260,11 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
     }
 
     /**
-     * Throwaway diagnostic trace only. Never inspect package names, attribution tags,
-     * message data, paths or account identifiers. Never mutate arguments.
-     *
-     * MethodHook subclasses below are bypassed by invoke()'s existing check/note/start/
-     * finish branches; their instrumentation is included for direct hook invocation.
+     * Throwaway instrumentation only. Never log account, package, attribution,
+     * message, path or Parcel contents. The Java proxy, direct hook and raw Binder
+     * paths are logged separately to make coverage gaps observable.
      */
-    private static void logAppOpsMap(Method method, Object[] args) {
+    private static void logAppOpsMap(Method method, Object[] args, String path) {
         try {
             String methodName = method.getName();
             String phase = methodName.startsWith("check") ? "check"
@@ -260,56 +272,116 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
                     : methodName.startsWith("start") ? "start"
                     : methodName.startsWith("finish") ? "finish" : "other";
 
-            // checkPackage(uid, pkg) has no AppOps operation; its first int is a UID.
             String opName = "not_applicable";
-            if (!"other".equals(phase) && !"checkPackage".equals(methodName)) {
-                opName = "unresolved";
-                if (args != null) {
-                    // Across platform versions, a binder token may precede the op int.
-                    for (Object arg : args) {
-                        if (arg instanceof Integer) {
-                            int op = (Integer) arg;
-                            opName = resolveOpName(op);
-                            break;
-                        }
-                    }
+            int argUid = -1;
+            if ("checkPackage".equals(methodName)) {
+                // checkPackage(uid, packageName) has no operation code.
+                argUid = integerAt(args, 0);
+            } else if (isOperationMethod(methodName)) {
+                // Operation argument is an int on current IAppOpsService APIs.
+                // Legacy AppOpsManager variants can supply a public op string.
+                Object operation = firstOperationArg(args);
+                if (operation instanceof Integer) {
+                    opName = resolveOpName((Integer) operation);
+                } else if (operation instanceof String) {
+                    String value = (String) operation;
+                    opName = value.startsWith("android:") && value.matches("[a-zA-Z0-9_:./]+")
+                            ? value : "unresolved_string";
+                } else {
+                    opName = "unresolved";
+                }
+
+                // These indices describe known API shapes only. -1 means unknown.
+                // noteProxyOperation carries UID in AttributionSource, not a flat int.
+                if ("checkAudioOperation".equals(methodName)) {
+                    argUid = integerAt(args, 2); // (op, usage, uid, package)
+                } else if (methodName.startsWith("startOperation")
+                        || methodName.startsWith("finishOperation")) {
+                    argUid = integerAt(args, 2); // (token, op, uid, ...)
+                } else if (methodName.startsWith("checkOperation")
+                        || methodName.startsWith("noteOperation")
+                        || "noteOp".equals(methodName) || "noteOpNoThrow".equals(methodName)
+                        || "checkOpNoThrow".equals(methodName)) {
+                    argUid = integerAt(args, 1);
                 }
             }
 
-            // UID values can be host-mapped; report both binder and guest context.
-            // -1 means the virtual identity could not be resolved in this process.
-            int virtualUid = -1;
-            int virtualUserId = -1;
-            try {
-                virtualUid = BlackBoxCore.getBUid();
-                virtualUserId = BlackBoxCore.getUserId();
-            } catch (Throwable ignored) {
-                // Logging must not interfere with the intercepted operation.
-            }
-            Slog.i("APPOPS_MAP", "phase=" + phase
+            Slog.i("APPOPS_MAP", "path=" + path
+                    + " phase=" + phase
                     + " method=" + methodName
                     + " op=" + opName
                     + " callerUid=" + Binder.getCallingUid()
-                    + " virtualUid=" + virtualUid
-                    + " userId=" + virtualUserId);
+                    + " argUid=" + argUid
+                    + " virtualUid=" + diagnosticVirtualUid()
+                    + " userId=" + diagnosticVirtualUserId());
         } catch (Throwable ignored) {
-            // Strictly log-only: no new failures or permission decisions.
+            // Observation must never change the original AppOps result.
+        }
+    }
+
+    private static boolean isOperationMethod(String methodName) {
+        return methodName.startsWith("checkOperation")
+                || methodName.startsWith("noteOperation")
+                || methodName.startsWith("startOperation")
+                || methodName.startsWith("finishOperation")
+                || "noteProxyOperation".equals(methodName)
+                || "checkAudioOperation".equals(methodName)
+                || "checkOpNoThrow".equals(methodName)
+                || "noteOp".equals(methodName)
+                || "noteOpNoThrow".equals(methodName)
+                || "startOp".equals(methodName)
+                || "startOpNoThrow".equals(methodName)
+                || "finishOp".equals(methodName);
+    }
+
+    private static Object firstOperationArg(Object[] args) {
+        if (args == null) return null;
+        for (Object arg : args) {
+            if (arg instanceof Integer) return arg;
+            if (arg instanceof String && ((String) arg).startsWith("android:")) return arg;
+        }
+        return null;
+    }
+
+    private static int integerAt(Object[] args, int position) {
+        if (args == null || position >= args.length || !(args[position] instanceof Integer)) {
+            return -1;
+        }
+        return (Integer) args[position];
+    }
+
+    private static int diagnosticVirtualUid() {
+        try { return BlackBoxCore.getBUid(); }
+        catch (Throwable ignored) { return -1; }
+    }
+
+    private static int diagnosticVirtualUserId() {
+        try { return BlackBoxCore.getUserId(); }
+        catch (Throwable ignored) { return -1; }
+    }
+
+    private static void logAppOpsRawTransact(int code) {
+        try {
+            Slog.i("APPOPS_MAP", "path=binder phase=raw method=transact op=unresolved"
+                    + " transactionCode=" + code
+                    + " callerUid=" + Binder.getCallingUid()
+                    + " argUid=-1"
+                    + " virtualUid=" + diagnosticVirtualUid()
+                    + " userId=" + diagnosticVirtualUserId());
+        } catch (Throwable ignored) {
+            // No Parcel reads, return changes, or new exceptions.
         }
     }
 
     private static String resolveOpName(int op) {
         String name = getOpPublicName(op);
-        if (name != null && !name.isEmpty()) {
-            return name;
-        }
+        if (name != null && !name.isEmpty()) return name;
         try {
             java.lang.reflect.Method m = AppOpsManager.class.getMethod("opToName", int.class);
             Object value = m.invoke(null, op);
-            if (value != null) {
-                return value.toString();
-            }
+            if (value != null) return value.toString();
         } catch (Throwable ignored) {
-            // Older/newer Android versions may hide one or both naming methods.
+            // One or both Android op-name APIs may be hidden on this OS.
         }
         return "id:" + op;
     }
