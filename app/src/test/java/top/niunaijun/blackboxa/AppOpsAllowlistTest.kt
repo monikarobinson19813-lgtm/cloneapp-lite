@@ -19,7 +19,12 @@ class AppOpsAllowlistTest {
             "android:read_external_storage",
             "android:foreground_service",
             "android:modify_audio_settings",
-            "android:capture_audio_output"
+            "android:capture_audio_output",
+            "android:access_fine_location",
+            "android:access_coarse_location",
+            "android:bluetooth_scan",
+            "android:bluetooth_connect",
+            "android:bluetooth_advertise"
         )
         allowed.forEach {
             assertTrue("Expected exact allowlist match for $it", AppOpsAllowlist.isAllowedPublicOp(it))
@@ -30,11 +35,6 @@ class AppOpsAllowlistTest {
     fun everythingElseMustNotBeApprovedByTheCompatibilityPolicy() {
         val forward = listOf(
             "android:system_alert_window",
-            "android:access_fine_location",
-            "android:access_coarse_location",
-            "android:bluetooth_scan",
-            "android:bluetooth_connect",
-            "android:bluetooth_advertise",
             "android:body_sensors",
             "android:nearby_wifi_devices",
             "android:write_settings",

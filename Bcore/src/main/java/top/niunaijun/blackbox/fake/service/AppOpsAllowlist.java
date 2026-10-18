@@ -28,7 +28,12 @@ public final class AppOpsAllowlist {
                     "android:read_external_storage",
                     "android:foreground_service",
                     "android:modify_audio_settings",
-                    "android:capture_audio_output"
+                    "android:capture_audio_output",
+                    "android:access_fine_location",
+                    "android:access_coarse_location",
+                    "android:bluetooth_scan",
+                    "android:bluetooth_connect",
+                    "android:bluetooth_advertise"
             )));
 
     private AppOpsAllowlist() {
