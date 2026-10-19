@@ -34,6 +34,24 @@ public class TokenCache {
         this.packageName = packageName;
     }
 
+    /** Enforce the virtual-user boundary when retrieving cached tokens. */
+    public boolean matchesRead(int requestedUserId, Account requestedAccount,
+                               String requestedTokenType, String requestedPackage) {
+        return userId == requestedUserId
+                && Objects.equals(account, requestedAccount)
+                && Objects.equals(authTokenType, requestedTokenType)
+                && Objects.equals(packageName, requestedPackage);
+    }
+
+    /** Invalidation must never remove another virtual user's cached token. */
+    public boolean matchesInvalidation(int requestedUserId, String requestedAccountType,
+                                       String requestedToken) {
+        return userId == requestedUserId
+                && account != null
+                && Objects.equals(account.type, requestedAccountType)
+                && Objects.equals(authToken, requestedToken);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

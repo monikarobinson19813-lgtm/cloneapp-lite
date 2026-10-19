@@ -122,6 +122,7 @@ public class BAccountManagerService extends IBAccountManagerService.Stub impleme
     private void loadAccounts() {
         Parcel parcel = Parcel.obtain();
         InputStream is = null;
+        boolean needsRewrite = false;
         try {
             File userInfoConf = BEnvironment.getAccountsConf();
             if (!userInfoConf.exists()) {
@@ -135,17 +136,22 @@ public class BAccountManagerService extends IBAccountManagerService.Stub impleme
             HashMap<Integer, BUserAccounts> accountsMap = parcel.readHashMap(BUserAccounts.class.getClassLoader());
             if (accountsMap == null)
                 return;
+            needsRewrite = BUserAccounts.normalizeLoadedUserIds(accountsMap);
             synchronized (mUserAccountsMap) {
                 mUserAccountsMap.clear();
-                for (Integer key : accountsMap.keySet()) {
-                    mUserAccountsMap.put(key, accountsMap.get(key));
-                }
+                mUserAccountsMap.putAll(accountsMap);
             }
         } catch (Exception e) {
             e.printStackTrace();
+            needsRewrite = false;
         } finally {
             parcel.recycle();
             CloseUtils.close(is);
+        }
+        // Persist migrated IDs only after closing the source account file.
+        // The existing accounts, passwords, and tokens remain intact.
+        if (needsRewrite) {
+            saveAllAccounts();
         }
     }
 
@@ -432,7 +438,7 @@ public class BAccountManagerService extends IBAccountManagerService.Stub impleme
             Iterator<TokenCache> iterator = mTokenCaches.iterator();
             while (iterator.hasNext()) {
                 TokenCache next = iterator.next();
-                if (next.account.type.equals(accountType) && next.userId == userId && next.authToken.equals(authToken)) {
+                if (next.matchesInvalidation(userId, accountType, authToken)) {
                     iterator.remove();
                 }
             }
@@ -826,7 +832,7 @@ public class BAccountManagerService extends IBAccountManagerService.Stub impleme
             while (iterator.hasNext()) {
                 TokenCache next = iterator.next();
 
-                if (next.userId == accounts.userId && next.account.equals(account) && next.authTokenType.equals(tokenType) && next.packageName.equals(callingPackage)) {
+                if (next.matchesRead(accounts.userId, account, tokenType, callingPackage)) {
                     if (next.expiryEpochMillis > nowTime) {
                         return next.authToken;
                     } else {
@@ -1160,7 +1166,7 @@ public class BAccountManagerService extends IBAccountManagerService.Stub impleme
         synchronized (mUserAccountsMap) {
             BUserAccounts bUserAccounts = mUserAccountsMap.get(userId);
             if (bUserAccounts == null) {
-                bUserAccounts = new BUserAccounts();
+                bUserAccounts = new BUserAccounts(userId);
                 mUserAccountsMap.put(userId, bUserAccounts);
             }
             return mUserAccountsMap.get(userId);
