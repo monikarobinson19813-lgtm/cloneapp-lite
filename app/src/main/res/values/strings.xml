@@ -68,4 +68,5 @@
     <string name="disable_gms_hint">Clear the current Google service environment? Google service data will be cleared.</string>
     <string name="no_gms">Currently, there is no Google service environment on mobile phones.</string>
     <string name="delete_instance">Delete instance and all data</string>
+    <string name="delete_user_number">Delete User %1$d</string>
 </resources>

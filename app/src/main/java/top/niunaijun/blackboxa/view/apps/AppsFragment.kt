@@ -76,7 +76,7 @@ class AppsFragment : Fragment() {
             viewBinding.stateView.showEmpty()
 
             mAdapter =
-                RVAdapter<AppInfo>(requireContext(), AppsAdapter { info -> confirmDeleteInstance(info) }).bind(viewBinding.recyclerView)
+                RVAdapter<AppInfo>(requireContext(), AppsAdapter()).bind(viewBinding.recyclerView)
 
             viewBinding.recyclerView.adapter = mAdapter
             
@@ -340,10 +340,6 @@ class AppsFragment : Fragment() {
                         it.setOnMenuItemClickListener { item ->
                             try {
                                 when (item.itemId) {
-                                    R.id.app_remove -> {
-                                        confirmDeleteInstance(data)
-                                    }
-
                                     R.id.app_clear -> {
                                         clearApk(data)
                                     }
@@ -453,23 +449,38 @@ class AppsFragment : Fragment() {
         }
     }
 
-    private fun confirmDeleteInstance(info: AppInfo) {
+    // Menu action is scoped to the actual selected user, not a guest icon.
+    fun confirmDeleteInstanceFromMenu() {
         try {
-            if (info.packageName != "com.whatsapp") {
-                requireContext().toast("Only regular WhatsApp instances can be deleted")
-                return
-            }
             val main = requireActivity() as? MainActivity ?: return
             if (main.currentSelectedUserId() != userID) {
                 requireContext().toast("Select this instance before deleting")
+                return
+            }
+            val core = BlackBoxCore.get()
+            if (!top.niunaijun.blackboxa.view.main.InstanceRouting.mayDeleteInstance(
+                    userID, core.users.map { it.id }, "com.whatsapp",
+                    core.isInstalled("com.whatsapp", userID)
+                )) {
+                requireContext().toast("No regular WhatsApp clone exists in User $userID")
                 return
             }
             MaterialDialog(requireContext()).show {
                 title(text = "Delete User $userID instance?")
                 message(text = "This permanently deletes ALL apps, chats, media and local data in User $userID. Other users remain intact. This cannot be undone.")
                 positiveButton(text = "Delete instance") {
-                    showLoading()
-                    viewModel.deleteInstance(info.packageName, userID)
+                    val current = BlackBoxCore.get()
+                    if (main.currentSelectedUserId() != userID ||
+                        !top.niunaijun.blackboxa.view.main.InstanceRouting.mayDeleteInstance(
+                            userID, current.users.map { it.id }, "com.whatsapp",
+                            current.isInstalled("com.whatsapp", userID)
+                        )
+                    ) {
+                        requireContext().toast("Selected instance changed; deletion cancelled")
+                    } else {
+                        showLoading()
+                        viewModel.deleteInstance("com.whatsapp", userID)
+                    }
                 }
                 negativeButton(res = R.string.cancel)
             }

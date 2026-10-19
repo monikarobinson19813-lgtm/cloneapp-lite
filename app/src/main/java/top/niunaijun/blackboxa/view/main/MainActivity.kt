@@ -396,6 +396,7 @@ class MainActivity : LoadingActivity() {
                                         ) ?: return
                                 currentUser = selectedUser
                                 updateUserRemark(selectedUser)
+                                invalidateOptionsMenu()
                                 showFloatButton(true)
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error in onPageSelected: ${e.message}")
@@ -541,9 +542,43 @@ class MainActivity : LoadingActivity() {
         }
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        val selectedId = currentSelectedUserId()
+        val canDelete = try {
+            selectedId != null &&
+                BlackBoxCore.get().users.any { it.id == selectedId } &&
+                BlackBoxCore.get().isInstalled("com.whatsapp", selectedId)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not verify selected user for deletion menu", e)
+            false
+        }
+        menu.findItem(R.id.main_delete_instance)?.apply {
+            isVisible = canDelete
+            if (selectedId != null) title = getString(R.string.delete_user_number, selectedId)
+        }
+        return super.onPrepareOptionsMenu(menu)
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         try {
             when (item.itemId) {
+                R.id.main_delete_instance -> {
+                    val selectedId = currentSelectedUserId()
+                    if (selectedId == null) {
+                        Log.w(TAG, "No selected user for deletion")
+                        return true
+                    }
+                    val target = supportFragmentManager.fragments
+                        .filterIsInstance<AppsFragment>()
+                        .firstOrNull { fragment ->
+                            fragment.isAdded && fragment.userID == selectedId
+                        }
+                    if (target == null) {
+                        Log.w(TAG, "No attached fragment for selected user $selectedId; refusing deletion")
+                    } else {
+                        target.confirmDeleteInstanceFromMenu()
+                    }
+                }
                 R.id.main_git -> {
                     val intent =
                             Intent(
