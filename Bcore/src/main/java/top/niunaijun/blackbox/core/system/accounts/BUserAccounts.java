@@ -111,6 +111,27 @@ public class BUserAccounts implements Parcelable {
     public BUserAccounts() {
     }
 
+    public BUserAccounts(int userId) {
+        this.userId = userId;
+    }
+
+    /**
+     * Restore the authoritative user IDs from the persisted map keys.
+     * Account/password/token contents are intentionally left unchanged.
+     */
+    public static boolean normalizeLoadedUserIds(Map<Integer, BUserAccounts> users) {
+        boolean changed = false;
+        for (Map.Entry<Integer, BUserAccounts> entry : users.entrySet()) {
+            Integer userId = entry.getKey();
+            BUserAccounts accounts = entry.getValue();
+            if (userId != null && accounts != null && accounts.userId != userId) {
+                accounts.userId = userId;
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
     protected BUserAccounts(Parcel in) {
         this.userId = in.readInt();
         this.accounts = in.createTypedArrayList(BAccount.CREATOR);
