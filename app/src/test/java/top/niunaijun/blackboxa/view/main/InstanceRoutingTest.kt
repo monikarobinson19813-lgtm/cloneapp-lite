@@ -23,9 +23,53 @@ class InstanceRoutingTest {
 
     @Test
     fun deletedMiddleUserDoesNotRenumberSurvivors() {
-        assertEquals(4, InstanceRouting.nextVirtualUserId(listOf(0, 2, 3)))
+        assertEquals(4, InstanceRouting.nextVirtualUserId(
+            InstanceRouting.seedHighWaterMark(-1, listOf(0, 2, 3))
+        ))
         assertEquals(2, InstanceRouting.userForPage(1, listOf(0, 2, 3, 4)))
         assertEquals(3, InstanceRouting.userForPage(2, listOf(0, 2, 3, 4)))
+    }
+
+    @Test
+    fun deletingHighestAllocatedIdNeverReusesIt() {
+        val persistedHighestEver = 4 // U4 reserved before install.
+        val survivors = listOf(0, 1, 2, 3) // U4 deleted.
+        val mark = InstanceRouting.seedHighWaterMark(persistedHighestEver, survivors)
+        assertEquals(4, mark)
+        assertEquals(5, InstanceRouting.nextVirtualUserId(mark))
+    }
+
+    @Test
+    fun persistedAllocationSurvivesSimulatedRestartAndReboot() {
+        val fakePreferences = mutableMapOf<String, Int>()
+        val key = "highest_ever_user_id"
+        // First launch migrates the existing U0/U1/U2 registrations.
+        val firstMark = InstanceRouting.seedHighWaterMark(
+            fakePreferences[key] ?: -1, listOf(0, 1, 2)
+        )
+        assertEquals(3, InstanceRouting.nextVirtualUserId(firstMark))
+        // Simulate synchronous commit of the allocated U3, then delete U3.
+        fakePreferences[key] = 3
+        // New Activity/process reads storage again; deleted U3 is absent.
+        val restartedMark = InstanceRouting.seedHighWaterMark(
+            fakePreferences[key] ?: -1, listOf(0, 1, 2)
+        )
+        assertEquals(4, InstanceRouting.nextVirtualUserId(restartedMark))
+        // Simulate another allocation, persistence and device reboot.
+        fakePreferences[key] = 4
+        val rebootedMark = InstanceRouting.seedHighWaterMark(
+            fakePreferences[key] ?: -1, listOf(0, 1, 2)
+        )
+        assertEquals(5, InstanceRouting.nextVirtualUserId(rebootedMark))
+    }
+
+    @Test
+    fun userIdExhaustionIsFailClosed() {
+        assertNull(InstanceRouting.nextVirtualUserId(Int.MAX_VALUE))
+        assertEquals(Int.MAX_VALUE, InstanceRouting.seedHighWaterMark(
+            Int.MAX_VALUE, listOf(0, 1, 2)
+        ))
+        assertEquals(0, InstanceRouting.nextVirtualUserId(-1))
     }
 
     @Test

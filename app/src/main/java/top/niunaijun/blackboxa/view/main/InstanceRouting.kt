@@ -13,9 +13,19 @@ internal object InstanceRouting {
     fun userForPage(position: Int, userIds: List<Int>): Int? =
         userIds.getOrNull(position)
 
-    // Never reuse a deleted user's ID while older proxy tasks might still exist.
-    fun nextVirtualUserId(existingIds: Collection<Int>): Int? =
-        existingIds.maxOrNull()?.let { if (it == Int.MAX_VALUE) null else it + 1 } ?: 0
+    // First-launch migration may only RAISE the remembered mark using installed users.
+    // A deleted highest ID must never reduce this persisted high-water mark.
+    fun seedHighWaterMark(storedHighestEver: Int, existingIds: Collection<Int>): Int =
+        maxOf(-1, storedHighestEver, existingIds.maxOrNull() ?: -1)
+
+    // Pure reader of the *persisted* high-water mark. Callers must persist each
+    // reservation synchronously BEFORE creating the virtual user.
+    fun nextVirtualUserId(highestEverAllocated: Int): Int? =
+        when {
+            highestEverAllocated == Int.MAX_VALUE -> null
+            highestEverAllocated < 0 -> 0
+            else -> highestEverAllocated + 1
+        }
 
     fun mayDeleteInstance(
         userId: Int,

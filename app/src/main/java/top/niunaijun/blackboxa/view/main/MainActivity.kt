@@ -35,6 +35,9 @@ class MainActivity : LoadingActivity() {
 
     private var currentUser = 0
 
+    // Monotonic IDs are persisted before an install starts, never reconstructed
+    // solely from the currently surviving virtual users.
+
     companion object {
         private const val TAG = "MainActivity"
         private const val STORAGE_PERMISSION_REQUEST_CODE = 1001
@@ -373,7 +376,7 @@ class MainActivity : LoadingActivity() {
             userList.forEach { fragmentList.add(AppsFragment.newInstance(it.id)) }
 
             currentUser = userList.firstOrNull()?.id ?: 0
-            val nextId = InstanceRouting.nextVirtualUserId(userList.map { it.id })
+            val nextId = VirtualUserIdStore.nextId(this, userList.map { it.id })
                     ?: throw IllegalStateException("No available virtual user ID")
             fragmentList.add(AppsFragment.newInstance(nextId))
 
@@ -446,6 +449,13 @@ class MainActivity : LoadingActivity() {
             fragmentList.map { it.userID }
         )
 
+    fun reserveVirtualUserId(userId: Int): Boolean {
+        val existingIds = BlackBoxCore.get().users.map { it.id }
+        // Existing users do not need another reservation when opening their app picker.
+        if (userId in existingIds) return true
+        return VirtualUserIdStore.reserve(this, userId, existingIds)
+    }
+
     fun onInstanceDeleted(deletedUserId: Int) {
         // Recreate fragments from the engine's real user IDs, not former page indices.
         if (BlackBoxCore.get().users.none { it.id == deletedUserId }) {
@@ -456,7 +466,7 @@ class MainActivity : LoadingActivity() {
     fun scanUser() {
         try {
             val realIds = BlackBoxCore.get().users.map { it.id }
-            val nextId = InstanceRouting.nextVirtualUserId(realIds)
+            val nextId = VirtualUserIdStore.nextId(this, realIds)
                 ?: throw IllegalStateException("No available virtual user ID")
             val desired = realIds + nextId
             val existing = fragmentList.map { it.userID }

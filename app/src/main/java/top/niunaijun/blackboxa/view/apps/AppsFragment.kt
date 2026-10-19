@@ -522,11 +522,19 @@ class AppsFragment : Fragment() {
 
     fun installApk(source: String) {
         try {
+            val main = requireActivity() as? MainActivity ?: return
+            // Reserve the blank page's ID durably before the installer creates
+            // a virtual user; stale IDs must fail closed rather than be reused.
+            if (!main.reserveVirtualUserId(userID)) {
+                requireContext().toast("User ID changed; reopen CloneApp Lite before adding an instance")
+                return
+            }
             showLoading()
             viewModel.install(source, userID)
         } catch (e: Exception) {
-            Log.e(TAG, "Error installing APK: ${e.message}")
+            Log.e(TAG, "Error installing APK: ${e.message}", e)
             hideLoading()
+            requireContext().toast("Could not reserve User $userID; no installation started")
         }
     }
 
