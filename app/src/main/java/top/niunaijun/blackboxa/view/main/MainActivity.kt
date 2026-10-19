@@ -373,7 +373,9 @@ class MainActivity : LoadingActivity() {
             userList.forEach { fragmentList.add(AppsFragment.newInstance(it.id)) }
 
             currentUser = userList.firstOrNull()?.id ?: 0
-            fragmentList.add(AppsFragment.newInstance(userList.size))
+            val nextId = InstanceRouting.nextVirtualUserId(userList.map { it.id })
+                    ?: throw IllegalStateException("No available virtual user ID")
+            fragmentList.add(AppsFragment.newInstance(nextId))
 
             mViewPagerAdapter = ViewPagerAdapter(this)
             mViewPagerAdapter.replaceData(fragmentList)
@@ -438,17 +440,35 @@ class MainActivity : LoadingActivity() {
         }
     }
 
+    fun currentSelectedUserId(): Int? =
+        InstanceRouting.userForPage(
+            viewBinding.viewPager.currentItem,
+            fragmentList.map { it.userID }
+        )
+
+    fun onInstanceDeleted(deletedUserId: Int) {
+        // Recreate fragments from the engine's real user IDs, not former page indices.
+        if (BlackBoxCore.get().users.none { it.id == deletedUserId }) {
+            recreate()
+        }
+    }
+
     fun scanUser() {
         try {
-            val userList = BlackBoxCore.get().users
+            val realIds = BlackBoxCore.get().users.map { it.id }
+            val nextId = InstanceRouting.nextVirtualUserId(realIds)
+                ?: throw IllegalStateException("No available virtual user ID")
+            val desired = realIds + nextId
+            val existing = fragmentList.map { it.userID }
 
-            if (fragmentList.size == userList.size) {
-                fragmentList.add(AppsFragment.newInstance(fragmentList.size))
-            } else if (fragmentList.size > userList.size + 1) {
-                fragmentList.removeLast()
+            when {
+                desired == existing -> mViewPagerAdapter.notifyDataSetChanged()
+                desired.size == existing.size + 1 && desired.take(existing.size) == existing -> {
+                    fragmentList.add(AppsFragment.newInstance(nextId))
+                    mViewPagerAdapter.notifyDataSetChanged()
+                }
+                else -> recreate()
             }
-
-            mViewPagerAdapter.notifyDataSetChanged()
         } catch (e: Exception) {
             Log.e(TAG, "Error in scanUser: ${e.message}")
         }

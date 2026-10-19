@@ -3,6 +3,7 @@ package top.niunaijun.blackboxa.view.apps
 import androidx.lifecycle.MutableLiveData
 import top.niunaijun.blackboxa.bean.AppInfo
 import top.niunaijun.blackboxa.data.AppsRepository
+import top.niunaijun.blackboxa.data.InstanceDeleteResult
 import top.niunaijun.blackboxa.view.base.BaseViewModel
 import android.util.Log
 
@@ -14,6 +15,7 @@ class AppsViewModel(private val repo: AppsRepository) : BaseViewModel() {
     val resultLiveData = MutableLiveData<String>()
 
     val launchLiveData = MutableLiveData<Boolean>()
+    val instanceDeleteLiveData = MutableLiveData<InstanceDeleteResult>()
 
     
     val updateSortLiveData = MutableLiveData<Boolean>()
@@ -58,6 +60,12 @@ class AppsViewModel(private val repo: AppsRepository) : BaseViewModel() {
     fun unInstall(packageName: String, userID: Int) {
         launchOnUI {
             repo.unInstall(packageName, userID, resultLiveData)
+        }
+    }
+
+    fun deleteInstance(packageName: String, userId: Int) {
+        launchOnUI {
+            repo.deleteInstance(packageName, userId, instanceDeleteLiveData)
         }
     }
 
