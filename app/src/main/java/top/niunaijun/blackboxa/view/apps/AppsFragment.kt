@@ -340,10 +340,6 @@ class AppsFragment : Fragment() {
                         it.setOnMenuItemClickListener { item ->
                             try {
                                 when (item.itemId) {
-                                    R.id.app_remove -> {
-                                        unInstallApk(data)
-                                    }
-
                                     R.id.app_clear -> {
                                         clearApk(data)
                                     }
@@ -405,6 +401,17 @@ class AppsFragment : Fragment() {
                 }
             }
 
+            viewModel.instanceDeleteLiveData.observe(viewLifecycleOwner) { result ->
+                if (result != null && result.userId == userID) {
+                    hideLoading()
+                    requireContext().toast(result.message)
+                    viewModel.instanceDeleteLiveData.value = null
+                    if (result.success) {
+                        (requireActivity() as? MainActivity)?.onInstanceDeleted(userID)
+                    }
+                }
+            }
+
             viewModel.launchLiveData.observe(viewLifecycleOwner) {
                 try {
                     it?.run {
@@ -442,28 +449,46 @@ class AppsFragment : Fragment() {
         }
     }
 
-    private fun unInstallApk(info: AppInfo) {
+    // Menu action is scoped to the actual selected user, not a guest icon.
+    fun confirmDeleteInstanceFromMenu() {
         try {
+            val main = requireActivity() as? MainActivity ?: return
+            if (main.currentSelectedUserId() != userID) {
+                requireContext().toast("Select this instance before deleting")
+                return
+            }
+            val core = BlackBoxCore.get()
+            if (!top.niunaijun.blackboxa.view.main.InstanceRouting.mayDeleteInstance(
+                    userID, core.users.map { it.id }, "com.whatsapp",
+                    core.isInstalled("com.whatsapp", userID)
+                )) {
+                requireContext().toast("No regular WhatsApp clone exists in User $userID")
+                return
+            }
             MaterialDialog(requireContext()).show {
-                title(R.string.uninstall_app)
-                message(text = getString(R.string.uninstall_app_hint, info.name))
-                positiveButton(R.string.done) {
-                    try {
+                title(text = "Delete User $userID instance?")
+                message(text = "This permanently deletes ALL apps, chats, media and local data in User $userID. Other users remain intact. This cannot be undone.")
+                positiveButton(text = "Delete instance") {
+                    val current = BlackBoxCore.get()
+                    if (main.currentSelectedUserId() != userID ||
+                        !top.niunaijun.blackboxa.view.main.InstanceRouting.mayDeleteInstance(
+                            userID, current.users.map { it.id }, "com.whatsapp",
+                            current.isInstalled("com.whatsapp", userID)
+                        )
+                    ) {
+                        requireContext().toast("Selected instance changed; deletion cancelled")
+                    } else {
                         showLoading()
-                        viewModel.unInstall(info.packageName, userID)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error uninstalling app: ${e.message}")
-                        hideLoading()
+                        viewModel.deleteInstance("com.whatsapp", userID)
                     }
                 }
-                negativeButton(R.string.cancel)
+                negativeButton(res = R.string.cancel)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error showing uninstall dialog: ${e.message}")
+            Log.e(TAG, "Error showing instance deletion confirmation: ${e.message}", e)
         }
     }
 
-    
     private fun stopApk(info: AppInfo) {
         try {
             MaterialDialog(requireContext()).show {
@@ -508,11 +533,19 @@ class AppsFragment : Fragment() {
 
     fun installApk(source: String) {
         try {
+            val main = requireActivity() as? MainActivity ?: return
+            // Reserve the blank page's ID durably before the installer creates
+            // a virtual user; stale IDs must fail closed rather than be reused.
+            if (!main.reserveVirtualUserId(userID)) {
+                requireContext().toast("User ID changed; reopen CloneApp Lite before adding an instance")
+                return
+            }
             showLoading()
             viewModel.install(source, userID)
         } catch (e: Exception) {
-            Log.e(TAG, "Error installing APK: ${e.message}")
+            Log.e(TAG, "Error installing APK: ${e.message}", e)
             hideLoading()
+            requireContext().toast("Could not reserve User $userID; no installation started")
         }
     }
 

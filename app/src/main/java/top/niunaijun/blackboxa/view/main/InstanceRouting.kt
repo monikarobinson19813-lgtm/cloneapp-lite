@@ -13,6 +13,69 @@ internal object InstanceRouting {
     fun userForPage(position: Int, userIds: List<Int>): Int? =
         userIds.getOrNull(position)
 
+    // First-launch migration may only RAISE the remembered mark using installed users.
+    // A deleted highest ID must never reduce this persisted high-water mark.
+    fun seedHighWaterMark(storedHighestEver: Int, existingIds: Collection<Int>): Int =
+        maxOf(-1, storedHighestEver, existingIds.maxOrNull() ?: -1)
+
+    // Pure reader of the *persisted* high-water mark. Callers must persist each
+    // reservation synchronously BEFORE creating the virtual user.
+    fun nextVirtualUserId(highestEverAllocated: Int): Int? =
+        when {
+            highestEverAllocated == Int.MAX_VALUE -> null
+            highestEverAllocated < 0 -> 0
+            else -> highestEverAllocated + 1
+        }
+
+    fun mayDeleteInstance(
+        userId: Int,
+        existingIds: Collection<Int>,
+        packageName: String,
+        isInstalled: Boolean
+    ): Boolean = userId >= 0 &&
+        userId in existingIds &&
+        packageName == "com.whatsapp" &&
+        isInstalled
+
+    fun deletionComplete(
+        targetId: Int,
+        beforeIds: Collection<Int>,
+        afterIds: Collection<Int>,
+        internalUserDirExists: Boolean,
+        externalUserDirExists: Boolean
+    ): Boolean = targetId in beforeIds &&
+        afterIds.toSet() == (beforeIds.toSet() - targetId) &&
+        !internalUserDirExists && !externalUserDirExists
+
+    /**
+     * Post-wipe forensic snapshot. deleteUser() itself has no rollback and its
+     * file deletions can fail silently; never reduce a partial wipe to "failed".
+     */
+    fun deletionFailureDetails(
+        targetId: Int,
+        beforeIds: Collection<Int>,
+        afterIds: Collection<Int>,
+        internalRootExists: Boolean,
+        externalRootExists: Boolean,
+        packageStillInstalled: Boolean
+    ): String? {
+        val issues = mutableListOf<String>()
+        if (targetId !in beforeIds) issues.add("target user was absent before wipe")
+        if (targetId in afterIds) issues.add("user still registered")
+        if (afterIds.toSet() != beforeIds.toSet() - targetId) {
+            issues.add("surviving user IDs differ from the pre-wipe snapshot")
+        }
+        val residualRoots = mutableListOf<String>()
+        if (internalRootExists) residualRoots.add("internal data/user/$targetId")
+        if (externalRootExists) residualRoots.add("external storage/emulated/$targetId")
+        if (residualRoots.isNotEmpty()) {
+            val prefix = if (targetId !in afterIds) "user removed but data remains" else "data remains"
+            issues.add("$prefix: ${residualRoots.joinToString(", ")}")
+        }
+        if (packageStillInstalled) issues.add("WhatsApp package still installed for User $targetId")
+        return issues.takeIf { it.isNotEmpty() }?.joinToString("; ")
+    }
+
     fun instanceLabel(userId: Int, savedRemark: String?): String =
         savedRemark?.takeIf { it.isNotBlank() } ?: "User $userId"
 }

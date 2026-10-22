@@ -35,6 +35,9 @@ class MainActivity : LoadingActivity() {
 
     private var currentUser = 0
 
+    // Monotonic IDs are persisted before an install starts, never reconstructed
+    // solely from the currently surviving virtual users.
+
     companion object {
         private const val TAG = "MainActivity"
         private const val STORAGE_PERMISSION_REQUEST_CODE = 1001
@@ -373,7 +376,9 @@ class MainActivity : LoadingActivity() {
             userList.forEach { fragmentList.add(AppsFragment.newInstance(it.id)) }
 
             currentUser = userList.firstOrNull()?.id ?: 0
-            fragmentList.add(AppsFragment.newInstance(userList.size))
+            val nextId = VirtualUserIdStore.nextId(this, userList.map { it.id })
+                    ?: throw IllegalStateException("No available virtual user ID")
+            fragmentList.add(AppsFragment.newInstance(nextId))
 
             mViewPagerAdapter = ViewPagerAdapter(this)
             mViewPagerAdapter.replaceData(fragmentList)
@@ -391,6 +396,7 @@ class MainActivity : LoadingActivity() {
                                         ) ?: return
                                 currentUser = selectedUser
                                 updateUserRemark(selectedUser)
+                                invalidateOptionsMenu()
                                 showFloatButton(true)
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error in onPageSelected: ${e.message}")
@@ -438,17 +444,42 @@ class MainActivity : LoadingActivity() {
         }
     }
 
+    fun currentSelectedUserId(): Int? =
+        InstanceRouting.userForPage(
+            viewBinding.viewPager.currentItem,
+            fragmentList.map { it.userID }
+        )
+
+    fun reserveVirtualUserId(userId: Int): Boolean {
+        val existingIds = BlackBoxCore.get().users.map { it.id }
+        // Existing users do not need another reservation when opening their app picker.
+        if (userId in existingIds) return true
+        return VirtualUserIdStore.reserve(this, userId, existingIds)
+    }
+
+    fun onInstanceDeleted(deletedUserId: Int) {
+        // Recreate fragments from the engine's real user IDs, not former page indices.
+        if (BlackBoxCore.get().users.none { it.id == deletedUserId }) {
+            recreate()
+        }
+    }
+
     fun scanUser() {
         try {
-            val userList = BlackBoxCore.get().users
+            val realIds = BlackBoxCore.get().users.map { it.id }
+            val nextId = VirtualUserIdStore.nextId(this, realIds)
+                ?: throw IllegalStateException("No available virtual user ID")
+            val desired = realIds + nextId
+            val existing = fragmentList.map { it.userID }
 
-            if (fragmentList.size == userList.size) {
-                fragmentList.add(AppsFragment.newInstance(fragmentList.size))
-            } else if (fragmentList.size > userList.size + 1) {
-                fragmentList.removeLast()
+            when {
+                desired == existing -> mViewPagerAdapter.notifyDataSetChanged()
+                desired.size == existing.size + 1 && desired.take(existing.size) == existing -> {
+                    fragmentList.add(AppsFragment.newInstance(nextId))
+                    mViewPagerAdapter.notifyDataSetChanged()
+                }
+                else -> recreate()
             }
-
-            mViewPagerAdapter.notifyDataSetChanged()
         } catch (e: Exception) {
             Log.e(TAG, "Error in scanUser: ${e.message}")
         }
@@ -511,9 +542,43 @@ class MainActivity : LoadingActivity() {
         }
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        val selectedId = currentSelectedUserId()
+        val canDelete = try {
+            selectedId != null &&
+                BlackBoxCore.get().users.any { it.id == selectedId } &&
+                BlackBoxCore.get().isInstalled("com.whatsapp", selectedId)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not verify selected user for deletion menu", e)
+            false
+        }
+        menu.findItem(R.id.main_delete_instance)?.apply {
+            isVisible = canDelete
+            if (selectedId != null) title = getString(R.string.delete_user_number, selectedId)
+        }
+        return super.onPrepareOptionsMenu(menu)
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         try {
             when (item.itemId) {
+                R.id.main_delete_instance -> {
+                    val selectedId = currentSelectedUserId()
+                    if (selectedId == null) {
+                        Log.w(TAG, "No selected user for deletion")
+                        return true
+                    }
+                    val target = supportFragmentManager.fragments
+                        .filterIsInstance<AppsFragment>()
+                        .firstOrNull { fragment ->
+                            fragment.isAdded && fragment.userID == selectedId
+                        }
+                    if (target == null) {
+                        Log.w(TAG, "No attached fragment for selected user $selectedId; refusing deletion")
+                    } else {
+                        target.confirmDeleteInstanceFromMenu()
+                    }
+                }
                 R.id.main_git -> {
                     val intent =
                             Intent(

@@ -7,6 +7,8 @@ import android.webkit.URLUtil
 import androidx.lifecycle.MutableLiveData
 import java.io.File
 import top.niunaijun.blackbox.BlackBoxCore
+import top.niunaijun.blackbox.core.env.BEnvironment
+import top.niunaijun.blackboxa.view.main.InstanceRouting
 import top.niunaijun.blackbox.utils.AbiUtils
 import top.niunaijun.blackboxa.R
 import top.niunaijun.blackboxa.app.AppManager
@@ -15,6 +17,8 @@ import top.niunaijun.blackboxa.bean.InstalledAppBean
 import top.niunaijun.blackboxa.util.MemoryManager
 import top.niunaijun.blackboxa.util.getString
 
+
+data class InstanceDeleteResult(val userId: Int, val success: Boolean, val message: String)
 
 class AppsRepository : InstalledAppListSource {
     val TAG: String = "AppsRepository"
@@ -418,6 +422,75 @@ class AppsRepository : InstalledAppListSource {
             Log.e(TAG, "Error uninstalling APK: ${e.message}")
             resultLiveData.postValue("Uninstallation failed: ${e.message}")
         }
+    }
+
+    // Whole virtual-user deletion also removes hidden GMS packages and both user data roots.
+    // Keep all failure paths explicit: a missing user or partial wipe must never report success.
+    fun deleteInstance(
+        packageName: String,
+        userId: Int,
+        resultLiveData: MutableLiveData<InstanceDeleteResult>
+    ) {
+        var beforeIds: List<Int>? = null
+        var wipeStarted = false
+        try {
+            val core = BlackBoxCore.get()
+            beforeIds = core.users.map { it.id }
+            if (!InstanceRouting.mayDeleteInstance(
+                    userId, beforeIds, packageName, core.isInstalled(packageName, userId)
+                )) {
+                resultLiveData.postValue(InstanceDeleteResult(userId, false, "Instance no longer matches the selected WhatsApp clone"))
+                return
+            }
+
+            // NOT transactional: package removals, user registration, then internal and
+            // external directory deletions are separate destructive stages.
+            wipeStarted = true
+            core.deleteUser(userId)
+
+            val failure = deletionFailureDetails(userId, beforeIds, packageName)
+            if (failure != null) {
+                resultLiveData.postValue(InstanceDeleteResult(
+                    userId, false, "User $userId deletion incomplete: $failure. Do not retry; inspect the named state before recovery."
+                ))
+                return
+            }
+
+            AppManager.mRemarkSharedPreferences.edit().apply {
+                remove("Remark$userId")
+                remove("AppList$userId")
+                apply()
+            }
+            resultLiveData.postValue(InstanceDeleteResult(userId, true, "User $userId instance and local data removed"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Instance deletion failed for userId=$userId", e)
+            val details = if (wipeStarted && beforeIds != null) {
+                try {
+                    deletionFailureDetails(userId, beforeIds, packageName)
+                        ?: "wipe appears complete, but the engine reported an exception"
+                } catch (checkError: Exception) {
+                    Log.e(TAG, "Unable to inspect incomplete deletion for userId=$userId", checkError)
+                    "post-delete state unknown; inspect data/user/$userId and storage/emulated/$userId"
+                }
+            } else {
+                "wipe not started; verify the virtual user before retrying"
+            }
+            resultLiveData.postValue(InstanceDeleteResult(
+                userId, false, "User $userId deletion failed: $details. Do not retry until checked."
+            ))
+        }
+    }
+
+    private fun deletionFailureDetails(userId: Int, beforeIds: List<Int>, packageName: String): String? {
+        val core = BlackBoxCore.get()
+        return InstanceRouting.deletionFailureDetails(
+            userId,
+            beforeIds,
+            core.users.map { it.id },
+            BEnvironment.getUserDir(userId).exists(),
+            BEnvironment.getExternalUserDir(userId).exists(),
+            core.isInstalled(packageName, userId)
+        )
     }
 
     fun launchApk(packageName: String, userId: Int, launchLiveData: MutableLiveData<Boolean>) {
