@@ -85,10 +85,15 @@ public class IAppOpsManagerProxy extends BinderInvocationStub {
         if (args != null && args.length > 0 && args[0] instanceof Integer) {
             publicOpName = getOpPublicName((Integer) args[0]);
         }
-        // All return-type and lifecycle checks are made before a synthetic result.
+        // Diagnostic-only: trace real calls, without adding an AppOps call.
+        // The forwarding callback runs only when the dispatcher does NOT synthesize
+        // an exact-allowlisted, int-returning compatibility result.
+        final String forwardedOpName = publicOpName;
         return AppOpsMethodDispatcher.invoke(method.getName(), method.getReturnType(),
                 publicOpName, AppOpsManager.MODE_ALLOWED,
-                () -> invokeReal(who, method, args));
+                () -> AppOpsForwardProof.trace(method.getName(), forwardedOpName,
+                        () -> invokeReal(who, method, args),
+                        event -> Slog.i("APPOPS_FORWARD_PROOF", event)));
     }
 
     private static Object invokeReal(Object who, Method method, Object[] args)
