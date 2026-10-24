@@ -173,10 +173,7 @@ public class BActivityThread extends IBActivityThread.Stub {
 
     public void initProcess(AppConfig appConfig) {
         synchronized (mConfigLock) {
-            if (this.mAppConfig != null && !this.mAppConfig.packageName.equals(appConfig.packageName)) {
-                
-                throw new RuntimeException("reject init process: " + appConfig.processName + ", this process is : " + this.mAppConfig.processName);
-            }
+            GuestBindGuard.requireCompatible(this.mAppConfig, appConfig);
             this.mAppConfig = appConfig;
             IBinder iBinder = asBinder();
             try {
@@ -314,18 +311,24 @@ public class BActivityThread extends IBActivityThread.Stub {
     }
 
     public void bindApplication(final String packageName, final String processName) {
+        GuestBindGuard.requireRequest(getAppConfig(), packageName, processName);
         if (Looper.myLooper() != Looper.getMainLooper()) {
             final ConditionVariable conditionVariable = new ConditionVariable();
-            BlackBoxCore.get().getHandler().post(() -> {
-                
-                Object bindData = createBindApplicationData(packageName, processName);
-                handleBindApplication(packageName, processName);
-                conditionVariable.open();
-            });
+            final java.util.concurrent.atomic.AtomicReference<Throwable> failure =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+            boolean posted = BlackBoxCore.get().getHandler().post(() ->
+                    GuestBindGuard.runAndSignal(() -> {
+                        GuestBindGuard.requireRequest(getAppConfig(), packageName, processName);
+                        createBindApplicationData(packageName, processName);
+                        handleBindApplication(packageName, processName);
+                    }, conditionVariable, failure));
+            if (!posted) {
+                throw new IllegalStateException("Cannot schedule guest binding");
+            }
             conditionVariable.block();
+            GuestBindGuard.rethrowFailure(failure.get());
         } else {
-            
-            Object bindData = createBindApplicationData(packageName, processName);
+            createBindApplicationData(packageName, processName);
             handleBindApplication(packageName, processName);
         }
     }
@@ -356,6 +359,7 @@ public class BActivityThread extends IBActivityThread.Stub {
     }
 
     public synchronized void handleBindApplication(String packageName, String processName) {
+        GuestBindGuard.requireRequest(getAppConfig(), packageName, processName);
         if (isInit())
             return;
         try {
