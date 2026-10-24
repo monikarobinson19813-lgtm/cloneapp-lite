@@ -17,6 +17,9 @@ import java.util.Objects;
 import java.util.Set;
 
 import top.niunaijun.blackbox.BlackBoxCore;
+import top.niunaijun.blackbox.app.BActivityThread;
+import top.niunaijun.blackbox.app.GuestBindGuard;
+import top.niunaijun.blackbox.entity.AppConfig;
 
 import top.niunaijun.blackbox.core.env.BEnvironment;
 import top.niunaijun.blackbox.utils.FileUtils;
@@ -40,16 +43,25 @@ public class IOCore {
 
     
     public void addRedirect(String origPath, String redirectPath) {
-        if (TextUtils.isEmpty(origPath) || TextUtils.isEmpty(redirectPath) || mRedirectMap.get(origPath) != null)
+        if (TextUtils.isEmpty(origPath) || TextUtils.isEmpty(redirectPath)) {
+            throw new IllegalStateException("Empty IO redirect rule");
+        }
+        String existing = mRedirectMap.get(origPath);
+        if (existing != null) {
+            if (!existing.equals(redirectPath)) {
+                throw new IllegalStateException("Conflicting IO redirect rule");
+            }
             return;
-        
-        mTrieTree.add(origPath);
-        mRedirectMap.put(origPath, redirectPath);
+        }
         File redirectFile = new File(redirectPath);
         if (!redirectFile.exists()) {
             FileUtils.mkdirs(redirectPath);
         }
+        // Java records the mapping only after the native call returns.
+        // NativeCore.addIORule is void: successful native registration is unverified.
         NativeCore.addIORule(origPath, redirectPath);
+        mTrieTree.add(origPath);
+        mRedirectMap.put(origPath, redirectPath);
     }
 
     public void addBlackRedirect(String path) {
@@ -105,56 +117,70 @@ public class IOCore {
     
 
     public void enableRedirect(Context context) {
-        Map<String, String> rule = new LinkedHashMap<>();
-        Set<String> blackRule = new HashSet<>();
+        if (context == null) {
+            throw new IllegalStateException("Missing guest context for IO binding");
+        }
         String packageName = context.getPackageName();
+        AppConfig config = BActivityThread.getAppConfig();
+        GuestBindGuard.requireRequest(config, packageName, config == null ? null : config.processName);
+        final int virtualUserId = config.userId;
+        final int hostUserId = BlackBoxCore.getHostUserId();
+        final File expectedDir = BEnvironment.getDataDir(packageName, virtualUserId);
 
-        try {
-            ApplicationInfo packageInfo = BlackBoxCore.getBPackageManager().getApplicationInfo(packageName, PackageManager.GET_META_DATA, BlackBoxCore.getUserId());
-            int systemUserId = BlackBoxCore.getHostUserId();
-            rule.put(String.format("/data/data/%s/lib", packageName), packageInfo.nativeLibraryDir);
-            rule.put(String.format("/data/user/%d/%s/lib", systemUserId, packageName), packageInfo.nativeLibraryDir);
-
-            rule.put(String.format("/data/data/%s", packageName), packageInfo.dataDir);
-            rule.put(String.format("/data/user/%d/%s", systemUserId, packageName), packageInfo.dataDir);
-
-            
-            File profilesRoot = new File(BEnvironment.getVirtualRoot(), "profiles");
-            FileUtils.mkdirs(profilesRoot.getAbsolutePath());
-            
-            rule.put("/data/misc/profiles", profilesRoot.getAbsolutePath());
-
-            File profilesCurDir = new File(profilesRoot, String.format("cur/%d/%s", BlackBoxCore.getUserId(), packageName));
-            File profilesRefDir = new File(profilesRoot, String.format("ref/%d/%s", BlackBoxCore.getUserId(), packageName));
-            FileUtils.mkdirs(profilesCurDir.getAbsolutePath());
-            FileUtils.mkdirs(profilesRefDir.getAbsolutePath());
-            rule.put(String.format("/data/misc/profiles/cur/%d/%s", BlackBoxCore.getUserId(), packageName), profilesCurDir.getAbsolutePath());
-            rule.put(String.format("/data/misc/profiles/ref/%d/%s", BlackBoxCore.getUserId(), packageName), profilesRefDir.getAbsolutePath());
-
-            if (BlackBoxCore.getContext().getExternalCacheDir() != null && context.getExternalCacheDir() != null) {
-                File external = BEnvironment.getExternalUserDir(BlackBoxCore.getUserId());
-
-                
-                rule.put("/sdcard", external.getAbsolutePath());
-                rule.put(String.format("/storage/emulated/%d", systemUserId), external.getAbsolutePath());
-
-                blackRule.add("/sdcard/Pictures");
-                blackRule.add(String.format("/storage/emulated/%d/Pictures", systemUserId));
-            }
-            if (BlackBoxCore.get().isHideRoot()) {
-                hideRoot(rule);
-            }
-            proc(rule);
-        } catch (Exception e) {
-            e.printStackTrace();
+        // Installation creates the private data directory (CreateUserExecutor).
+        // Do NOT fabricate a new empty directory when an installed guest's
+        // original session directory is missing.
+        if (!expectedDir.isDirectory()) {
+            throw new IllegalStateException("Missing installed guest data directory");
         }
-        for (String key : rule.keySet()) {
-            get().addRedirect(key, rule.get(key));
+        final ApplicationInfo packageInfo = BlackBoxCore.getBPackageManager()
+                .getApplicationInfo(packageName, PackageManager.GET_META_DATA, virtualUserId);
+        if (packageInfo == null || !packageName.equals(packageInfo.packageName)
+                || !expectedDir.getAbsolutePath().equals(packageInfo.dataDir)) {
+            throw new IllegalStateException("Guest package/data directory mismatch");
         }
-        for (String s : blackRule) {
-            get().addBlackRedirect(s);
-        }
-        NativeCore.enableIO();
+
+        final Set<String> blackRule = new HashSet<>();
+        GuestRedirectPlan.prepareValidateApply(
+                packageName, hostUserId, expectedDir, mRedirectMap,
+                () -> {
+                    Map<String, String> rule = new LinkedHashMap<>();
+                    rule.put(String.format("/data/data/%s/lib", packageName), packageInfo.nativeLibraryDir);
+                    rule.put(String.format("/data/user/%d/%s/lib", hostUserId, packageName), packageInfo.nativeLibraryDir);
+                    rule.put(String.format("/data/data/%s", packageName), packageInfo.dataDir);
+                    rule.put(String.format("/data/user/%d/%s", hostUserId, packageName), packageInfo.dataDir);
+
+                    File profilesRoot = new File(BEnvironment.getVirtualRoot(), "profiles");
+                    FileUtils.mkdirs(profilesRoot.getAbsolutePath());
+                    rule.put("/data/misc/profiles", profilesRoot.getAbsolutePath());
+
+                    File profilesCurDir = new File(profilesRoot, String.format("cur/%d/%s", virtualUserId, packageName));
+                    File profilesRefDir = new File(profilesRoot, String.format("ref/%d/%s", virtualUserId, packageName));
+                    FileUtils.mkdirs(profilesCurDir.getAbsolutePath());
+                    FileUtils.mkdirs(profilesRefDir.getAbsolutePath());
+                    rule.put(String.format("/data/misc/profiles/cur/%d/%s", virtualUserId, packageName), profilesCurDir.getAbsolutePath());
+                    rule.put(String.format("/data/misc/profiles/ref/%d/%s", virtualUserId, packageName), profilesRefDir.getAbsolutePath());
+
+                    if (BlackBoxCore.getContext().getExternalCacheDir() != null && context.getExternalCacheDir() != null) {
+                        File external = BEnvironment.getExternalUserDir(virtualUserId);
+                        rule.put("/sdcard", external.getAbsolutePath());
+                        rule.put(String.format("/storage/emulated/%d", hostUserId), external.getAbsolutePath());
+                        blackRule.add("/sdcard/Pictures");
+                        blackRule.add(String.format("/storage/emulated/%d/Pictures", hostUserId));
+                    }
+                    if (BlackBoxCore.get().isHideRoot()) {
+                        hideRoot(rule);
+                    }
+                    proc(rule);
+                    return rule;
+                },
+                (from, to) -> addRedirect(from, to),
+                () -> {
+                    for (String key : blackRule) {
+                        addBlackRedirect(key);
+                    }
+                    NativeCore.enableIO();
+                });
     }
 
     private void hideRoot(Map<String, String> rule) {
